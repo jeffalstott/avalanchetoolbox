@@ -1,7 +1,7 @@
 from distutils.core import setup
 setup(
         name = 'avalanches',
-        py_modules = ['avalanches', 'database_classes', 'input_processing'],
+        packages = ['avalanches'],
         version = '.1',
         description = 'Toolbox for identifying and describing branching processes, such as neuronal avalanches',
         author='Jeff Alstott',

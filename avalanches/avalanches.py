@@ -576,7 +576,7 @@ def avalanche_statistics(metrics, \
         close_session_at_end=False):
     from scipy.stats import mode, linregress
     from numpy import empty, unique, median, sqrt, sort
-    import statistics as pl_statistics
+    import powerlaw as powerlaw
     
 
     if not session and database_url:
@@ -659,13 +659,13 @@ def avalanche_statistics(metrics, \
 
                     if distribution=='power_law':
                         if xmin:
-                            parameters, loglikelihood = pl_statistics.distribution_fit(\
+                            parameters, loglikelihood = powerlaw.distribution_fit(\
                                     metrics[k], distribution, discrete=discrete, xmin=xmin, xmax=xmax)
                             alpha = parameters[0]
-                            D = pl_statistics.power_law_ks_distance(sort(metrics[k]),\
+                            D = powerlaw.power_law_ks_distance(sort(metrics[k]),\
                                     alpha, xmin=xmin, xmax=xmax, discrete=discrete)
 
-                            D_plus_critical_branching, D_minus_critical_branching, Kappa = pl_statistics.power_law_ks_distance(sort(metrics[k]),\
+                            D_plus_critical_branching, D_minus_critical_branching, Kappa = powerlaw.power_law_ks_distance(sort(metrics[k]),\
                                     1.5, xmin=xmin, xmax=xmax, discrete=discrete, kuiper=True)
                             noise_flag = None
                             n_tail = sum(metrics[k]>=xmin)
@@ -675,22 +675,22 @@ def avalanche_statistics(metrics, \
                             R=None
                             p=None
                         else:
-                            xmin, D, alpha, loglikelihood, n_tail, noise_flag = pl_statistics.find_xmin(metrics[k],discrete=discrete)
-                            D_plus_critical_branching, D_minus_critical_branching, Kappa = pl_statistics.power_law_ks_distance(sort(metrics[k]),\
+                            xmin, D, alpha, loglikelihood, n_tail, noise_flag = powerlaw.find_xmin(metrics[k],discrete=discrete)
+                            D_plus_critical_branching, D_minus_critical_branching, Kappa = powerlaw.power_law_ks_distance(sort(metrics[k]),\
                                     1.5, xmin=xmin, xmax=xmax, discrete=discrete, kuiper=True)
                             alpha_error = (alpha-1)/sqrt(n_tail)
                             parameters = [alpha, alpha_error]
                             R = None
                             p = None
                    # elif not xmax and discrete and (distribution=='lognormal' or distribution=='truncated_power_law'):
-                   #     parameters, loglikelihood, R, p = pl_statistics.distribution_fit(metrics[k], distribution,\
+                   #     parameters, loglikelihood, R, p = powerlaw.distribution_fit(metrics[k], distribution,\
                    #             xmin=xmin, xmax=max(metrics[k]), discrete=discrete, comparison_alpha=alpha)
                    #     D=None
                    #     D_plus_critical_branching=None
                    #     D_minus_critical_branching=None
                    #     Kappa = None
                     else:
-                        parameters, loglikelihood, R, p = pl_statistics.distribution_fit(metrics[k], distribution,\
+                        parameters, loglikelihood, R, p = powerlaw.distribution_fit(metrics[k], distribution,\
                                 xmin=xmin, xmax=xmax, discrete=discrete, comparison_alpha=alpha)
                         D=None
                         D_plus_critical_branching=None

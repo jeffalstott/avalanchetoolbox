@@ -291,3 +291,9 @@ class Fit(Base):
     def __repr__(self):
         return "<%s(subject='%s', experiment='%s', task='%s', sensor='%s', variable='%s', distribution='%s')>" % \
                 (self.__class__.__name__, self.subject_id, self.experiment_id, self.task_id, self.sensor_id, self.variable, self.distribution)
+
+def create_database(url):
+    from sqlalchemy import create_engine
+
+    engine = create_engine(url, echo=False)
+    Base.metadata.create_all(engine)

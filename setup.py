@@ -1,13 +1,13 @@
 from distutils.core import setup
 setup(
-        name = 'avalanches',
+        name = 'avalanche-toolbox',
         packages = ['avalanches'],
         version = '.1',
         description = 'Toolbox for identifying and describing branching processes, such as neuronal avalanches',
         author='Jeff Alstott',
         author_email = 'jeffalstott@gmail.com',
         url = 'https://github.com/jeffalstott/avalanches',
-        requires = ['powerlaw', 'scipy', 'numpy', 'sqlalchemy'],
+        requires = ['powerlaw', 'scipy', 'numpy', 'sqlalchemy', 'h5py', 'matplotlib'],
         classifiers = [
             'License :: OSI Approved :: MIT License',
             'Programming Language :: Python',

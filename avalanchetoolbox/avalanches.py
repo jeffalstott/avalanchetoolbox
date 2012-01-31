@@ -196,7 +196,7 @@ def find_thresholds(signal, threshold_mode='SD', threshold_level=3, threshold_di
             thresholds_down = signal.mean(-1) - signal.std(-1)*threshold_level[:,1]
 
     elif threshold_mode == 'Likelihood':
-        from statistics import likelihood_threshold
+        from powerlaw import likelihood_threshold
         from numpy import zeros
         if threshold_direction in ['both', 'up']:
             thresholds_up = zeros(len(signal))
@@ -755,10 +755,10 @@ def avalanche_statistics(metrics, \
     return statistics
 
 def avalanche_analyses(data,\
-        threshold_mode, threshold_levels, threshold_directions,\
-        event_signals, event_detections,\
-        time_scales, cascade_methods,\
-        spatial_samples=('all','all'), temporal_samples=('all','all'), \
+        threshold_mode='SD', threshold_levels=[2, 2.5, 3, 3.5], threshold_directions=['both'],\
+        event_signals=['displacement'], event_detections = ['local_extrema'],\
+        time_scales=[1,2,3,4], cascade_methods=['grid'],\
+        spatial_samples=[('all','all')], temporal_samples=[('all','all')], \
         given_xmin_xmax=[(None, None)],\
         spatial_sample_names=None, temporal_sample_names=None, \
         write_to_HDF5=False, overwrite_HDF5=False,\
@@ -767,7 +767,8 @@ def avalanche_analyses(data,\
         filter_id=None, subject_id=None, task_id=None, experiment_id=None, sensor_id=None, recording_id=None,\
         data_amplitude=None, data_displacement_aucs=None, data_amplitude_aucs=None,\
         cluster=False, swarms_directory=None, analyses_directory=None, python_location=None,\
-        close_session_at_end=False, verbose=False):
+        close_session_at_end=False, verbose=False,\
+        stats=True):
 
     if spatial_sample_names:
         spatial_samples = zip(spatial_samples, spatial_sample_names)
@@ -780,8 +781,6 @@ def avalanche_analyses(data,\
         print 'Requires a list of temporal_samples AND a list of temporal_sample names, either as temporal_sample_names=list or as temporal_samples=a zipped list of tuples with indices and labels'
         return
     analysis_id=None 
-    if verbose:
-        results = {}
 
     if not session and database_url:
         from sqlalchemy import create_engine
@@ -790,7 +789,12 @@ def avalanche_analyses(data,\
         session = Session(engine)
     if session:
         import database_classes as db
-    from sqlalchemy import and_
+        from sqlalchemy import and_
+
+    if not session:
+        verbose=True
+    if verbose:
+        results = {}
 
     parameter_space = [(tl, td, e, ed, ts, c,s,sn,t,tn) for tl in threshold_levels \
             for td in threshold_directions \
@@ -886,15 +890,18 @@ def avalanche_analyses(data,\
                 session.commit()
                 analysis_id=analysis.id
 
-            statistics = avalanche_statistics(metrics, \
-                    given_xmin_xmax=given_xmin_xmax,\
-                    session=session, database_url=database_url, \
-                    subject_id=subject_id, task_id=task_id, experiment_id=experiment_id,\
-                    sensor_id=sensor_id, recording_id=recording_id, \
-                    filter_id=filter_id, analysis_id=analysis_id)
             if verbose:
                 results[parameters]['metrics'] = metrics 
-                results[parameters]['statistics'] = statistics
+
+            if stats:
+                statistics = avalanche_statistics(metrics, \
+                        given_xmin_xmax=given_xmin_xmax,\
+                        session=session, database_url=database_url, \
+                        subject_id=subject_id, task_id=task_id, experiment_id=experiment_id,\
+                        sensor_id=sensor_id, recording_id=recording_id, \
+                        filter_id=filter_id, analysis_id=analysis_id)
+                if verbose:
+                    results[parameters]['statistics'] = statistics
 
         else:
             new_analysis = str(max_analysis+1)

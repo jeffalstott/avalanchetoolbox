@@ -2,7 +2,7 @@ from numpy import array, where, log2
 from bisect import bisect_left
 from sys import float_info
 
-def avalanche_analysis(data,\
+def run_analysis(data,\
         data_amplitude=False, data_displacement_aucs=False, data_amplitude_aucs=False, \
         event_signal='displacement', event_detection='local_extrema',\
         threshold_mode='SD', threshold_level=3, threshold_direction='both',\
@@ -754,7 +754,7 @@ def avalanche_statistics(metrics, \
             session.bind.dispose()
     return statistics
 
-def avalanche_analyses(data,\
+def run_analyses(data,\
         threshold_mode='SD', threshold_levels=[2, 2.5, 3, 3.5], threshold_directions=['both'],\
         event_signals=['displacement'], event_detections = ['local_extrema'],\
         time_scales=[1,2,3,4], cascade_methods=['grid'],\
@@ -823,9 +823,9 @@ def avalanche_analyses(data,\
         except:
             print("Constructing max_analysis_file")
             from os import listdir
-            analyses = [int(a[:-3]) for a in listdir(analyses_directory)]
-            if analyses:
-                max_analysis = max(analyses)
+            analyses_list = [int(a[:-3]) for a in listdir(analyses_directory)]
+            if analyses_list:
+                max_analysis = max(analyses_list)
             else:
                 max_analysis = 0
 
@@ -863,7 +863,7 @@ def avalanche_analyses(data,\
                 session.bind.dispose()
                 #Throw away the connection until we need it again, which could be awhile
 
-            metrics = avalanche_analysis(data,\
+            metrics = run_analysis(data,\
                     data_amplitude=data_amplitude, \
                     data_displacement_aucs=data_displacement_aucs,\
                     data_amplitude_aucs=data_amplitude_aucs,\
@@ -921,7 +921,7 @@ def avalanche_analyses(data,\
             analysis_file.write("""print("analysis_id=%r, threshold_mode=%r, threshold_level=%r, threshold_direction=%r, event_signal=%r, event_detection=%r, time_scale=%s, cascade_method=%r, spatial_sample=%r, spatial_sample_name=%r, temporal_sample=%r, temporal_sample_name=%r") \n\n"""\
                 % (analysis_id, threshold_mode, tl, td, e, ed, ts, c, s,sn, t, tn))
 
-            analysis_file.writelines(["metrics = avalanche_analysis(%r,\\\n" % data,
+            analysis_file.writelines(["metrics = run_analysis(%r,\\\n" % data,
                 "    threshold_mode=%r, threshold_level=%r, threshold_direction=%r,\\\n" % (threshold_mode,tl, td),
                 "    event_signal=%r, event_detection=%r,\\\n" % (e,ed),
                 "    time_scale=%s, cascade_method=%r,\\\n" % (ts,c),

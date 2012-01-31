@@ -1,12 +1,12 @@
 from distutils.core import setup
 setup(
-        name = 'avalanche-toolbox',
-        packages = ['avalanches'],
+        name = 'avalanchetoolbox',
+        packages = ['avalanchetoolbox'],
         version = '.2',
         description = 'Toolbox for identifying and describing branching processes, such as neuronal avalanches',
         author='Jeff Alstott',
         author_email = 'jeffalstott@gmail.com',
-        url = 'https://github.com/jeffalstott/avalanches',
+        url = 'https://github.com/jeffalstott/avalanchetoolbox',
         requires = ['powerlaw', 'scipy', 'numpy', 'sqlalchemy', 'h5py', 'matplotlib'],
         classifiers = [
             'License :: OSI Approved :: MIT License',

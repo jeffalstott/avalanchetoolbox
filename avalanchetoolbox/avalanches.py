@@ -587,7 +587,7 @@ def avalanche_statistics(metrics, \
         close_session_at_end=True
 
     if session:
-        import database_classes as db
+        import database as db
         avalanche_analysis = session.query(db.Avalanche).filter_by(\
                 id=analysis_id).first()
 
@@ -788,7 +788,7 @@ def run_analyses(data,\
         engine = create_engine(database_url, echo=False)
         session = Session(engine)
     if session:
-        import database_classes as db
+        import database as db
         from sqlalchemy import and_
 
     if not session:
@@ -931,7 +931,7 @@ def run_analyses(data,\
                 "    HDF5_group=%r)\n\n" % HDF5_group])
 
             analysis_file.writelines(["if not analysis_id:\n",
-                "    import database_classes as db\n",
+                "    import database as db\n",
                 "    analysis = db.Avalanche(\\\n",
                 "        filter_id=%s,\\\n" % filter_id,
                 "        spatial_sample=%r, temporal_sample=%r,\\\n" % (sn, tn),

@@ -1,5 +1,8 @@
 def alpha_sigma(user_options):
-    import Helix_database as db
+    from Helix_database import Session
+    session = Session()
+
+    import avalanchetoolbox.database as db
 
     x = db.Avalanche.sigma_events
     x_name = 'Sigma (Events)'
@@ -26,7 +29,7 @@ def alpha_sigma(user_options):
             'Task.eyes': None}
     options.update(user_options)
 
-    data = db.compare(y, x, color, db.Task.type, db.Experiment.visit_number, **options)
+    data = db.compare(session, y, x, color, db.Task.type, db.Experiment.visit_number, **options)
 
     x_label = str(x).split('.')[-1]
     y_label = str(y).split('.')[-1]

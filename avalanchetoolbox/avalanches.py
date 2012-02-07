@@ -1122,16 +1122,9 @@ def signal_variability(data, subplots=False, title=None, density_limits=(-20,0),
             dmean = d.mean()
             dstd = d.std()
             ye, xe = histogram(d, bins=100, normed=True)
-            if (sign(d)>0).all():
-                from scipy.stats import expon
-                expon_parameters = expon.fit(d)
-                yf = expon.pdf(xe[1:], *expon_parameters)
-                left_threshold = 0
-                right_threshold = 0
-            else:
-                from scipy.stats import norm
-                yf = norm.pdf(xe[1:],dmean, dstd)
-                left_threshold, right_threshold = likelihood_threshold(d, threshold_level, comparison_distribution='norm', comparison_parameters=(dmean, dstd))
+            from scipy.stats import norm
+            yf = norm.pdf(xe[1:],dmean, dstd)
+            left_threshold, right_threshold = likelihood_threshold(d, threshold_level, comparison_distribution='norm', comparison_parameters=(dmean, dstd))
 
             x = (xe[1:]-dmean)/dstd
             ax.plot(x, log(ye), 'b-', x ,log(yf), 'r-')
@@ -1155,6 +1148,7 @@ def signal_variability(data, subplots=False, title=None, density_limits=(-20,0),
 
 def likelihood_threshold(d, threshold_level=10, comparison_distribution='norm', comparison_parameters=False):
     from numpy import shape
+    from powerlaw import cumulative_distribution_function
     if shape(threshold_level)==(2,):
         left_threshold_level = threshold_level[0]
         right_threshold_level = threshold_level[1]
@@ -1186,7 +1180,8 @@ def likelihood_threshold(d, threshold_level=10, comparison_distribution='norm', 
         left_pX = (left_pX*n_below_mean)/n
         left_likelihood_ratio = left_pX[1:]/norm.cdf(left_x[1:], dmean, dstd)
         left_below_threshold = where(left_likelihood_ratio<left_threshold_level)[0]
-        if left_below_threshold==[]:
+        print left_below_threshold
+        if not left_below_threshold.any():
             left_threshold = left_x[-1]
         elif left_below_threshold[0]==0:
             left_threshold = left_x[0]-1
@@ -1197,7 +1192,7 @@ def likelihood_threshold(d, threshold_level=10, comparison_distribution='norm', 
         right_pX = (right_pX*n_above_mean)/n
         right_likelihood_ratio = right_pX/norm.sf(right_x, dmean, dstd)
         right_below_threshold = where(right_likelihood_ratio<right_threshold_level)[0]
-        if right_below_threshold==[]:
+        if not right_below_threshold.any():
             right_threshold = right_x[0]
         elif right_below_threshold[-1]==len(right_x):
             right_threshold = right_x[-1]+1

@@ -6,7 +6,7 @@ def run_analysis(data,\
         data_amplitude=False, data_displacement_aucs=False, data_amplitude_aucs=False, \
         event_signal='displacement', event_detection='local_extrema',\
         threshold_mode='SD', threshold_level=3, threshold_direction='both',\
-        time_scale=1, cascade_method='grid', \
+        time_scale='mean_iei', cascade_method='grid', \
         spatial_sample='all', spatial_sample_name=False,\
         temporal_sample='all', temporal_sample_name=False,\
         write_to_HDF5=False, overwrite_HDF5=False,\
@@ -64,7 +64,6 @@ def run_analysis(data,\
         data_amplitude_aucs = area_under_the_curve(data_amplitude)
 
     metrics = {}
-    metrics['time_scale'] = time_scale
     metrics['threshold_mode'] = threshold_mode
     metrics['threshold_level'] = threshold_level
     metrics['event_signal'] = event_signal
@@ -86,6 +85,11 @@ def run_analysis(data,\
 
     metrics.update(m)
 
+    if time_scale=='mean_iei':
+        time_scale = round(m['interevent_intervals'].mean())
+        print("Time scale: %f time steps" % time_scale)
+
+    metrics['time_scale'] = time_scale
     metrics['event_displacements'] = data_displacement[m['event_channels'], m['event_times']]
     metrics['event_amplitudes']= data_amplitude[m['event_channels'], m['event_times']]
     metrics['event_amplitude_aucs'] = data_amplitude_aucs[m['event_channels'], m['event_times']]

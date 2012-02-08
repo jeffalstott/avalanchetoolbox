@@ -91,7 +91,7 @@ def run_analysis(data,\
         if time_scale==float('nan'):
             if metrics['event_times'].any():
                 time_scale==1
-        print("One event found, using time scale of 1 time step")
+            print("One event found, using time scale of 1 time step")
 
 
 

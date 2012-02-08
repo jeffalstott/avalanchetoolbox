@@ -154,6 +154,7 @@ def find_thresholds(signal, threshold_mode='SD', threshold_level=3, threshold_di
         n_channels=1
     else:
         n_channels, n_time_points = signal.shape
+
     thresholds_down = None
     thresholds_up = None
 
@@ -281,8 +282,8 @@ def find_events(signal, thresholds_up=None, thresholds_down=None,\
     sample_mask = spatial_mask*temporal_mask
 
     #Threshold mask
-    up_mask = transpose(transpose(signal)>thresholds_up)*1
-    down_mask = transpose(transpose(signal)<thresholds_down)*1
+    up_mask = transpose(transpose(signal)>=thresholds_up)*1
+    down_mask = transpose(transpose(signal)<=thresholds_down)*1
 
     if any(thresholds_up) and any(thresholds_down):
         threshold_mask = up_mask+down_mask
@@ -388,6 +389,10 @@ def find_events(signal, thresholds_up=None, thresholds_down=None,\
 def find_cascades(event_times, time_scale=1, method='grid'):
     """find_events does things"""
     from numpy import diff, concatenate
+
+    if not event_times.any():
+        #If we're given an empty array, return empty arrays
+        return event_times, event_times
 
     if method=='gap':
         starts = array([event_times[0]])
@@ -1119,6 +1124,9 @@ def signal_variability(data, subplots=False, title=None, density_limits=(-20,0),
                 ax = plt.subplot(rows, columns, 1)
 
             d = data[channelNum,:]
+#            if not all(d[i] <= d[i+1] for i in range(len(d)-1)):
+#                from numpy import sort
+#                d = sort(d)
             dmean = d.mean()
             dstd = d.std()
             ye, xe = histogram(d, bins=100, normed=True)
@@ -1146,7 +1154,7 @@ def signal_variability(data, subplots=False, title=None, density_limits=(-20,0),
     if title:
         plt.suptitle(title)
 
-def likelihood_threshold(d, threshold_level=10, comparison_distribution='norm', comparison_parameters=False):
+def likelihood_threshold(d, threshold_level=10, comparison_distribution='norm', comparison_parameters=False, plot=False):
     from numpy import shape
     from powerlaw import cumulative_distribution_function
     if shape(threshold_level)==(2,):
@@ -1168,7 +1176,6 @@ def likelihood_threshold(d, threshold_level=10, comparison_distribution='norm', 
         if not comparison_parameters:
             comparison_parameters = (d.mean(), d.std())
         from scipy.stats import norm
-        from numpy import where
 
         dmean = comparison_parameters[0]
         dstd = comparison_parameters[1]
@@ -1178,25 +1185,41 @@ def likelihood_threshold(d, threshold_level=10, comparison_distribution='norm', 
 
         left_pX, left_x = cumulative_distribution_function(d[d<dmean], survival=False)
         left_pX = (left_pX*n_below_mean)/n
-        left_likelihood_ratio = left_pX[1:]/norm.cdf(left_x[1:], dmean, dstd)
-        left_below_threshold = where(left_likelihood_ratio<left_threshold_level)[0]
-        print left_below_threshold
-        if not left_below_threshold.any():
-            left_threshold = left_x[-1]
-        elif left_below_threshold[0]==0:
-            left_threshold = left_x[0]-1
+        if len(left_x)==1:
+            left_likelihood_ratio = left_pX/norm.cdf(left_x, dmean, dstd)
         else:
-            left_threshold = left_x[left_below_threshold[0]]
+            left_likelihood_ratio = left_pX[1:]/norm.cdf(left_x[1:], dmean, dstd)
+        left_above_threshold = left_likelihood_ratio>left_threshold_level
+        cross_below_threshold = next((i for i in range(len(left_above_threshold)) if left_above_threshold[i]==False), None)
+        if cross_below_threshold==0:
+            #left_threshold = left_x[0]-1 #Signal is never beyond threshold. Place threshold beyond the range of the data
+            left_threshold = float('-inf')
+        elif cross_below_threshold==None:
+            left_threshold = left_x[-1]
+        else:
+            left_threshold = left_x[cross_below_threshold]
 
         right_pX, right_x = cumulative_distribution_function(d[d>dmean], survival=True)
         right_pX = (right_pX*n_above_mean)/n
         right_likelihood_ratio = right_pX/norm.sf(right_x, dmean, dstd)
-        right_below_threshold = where(right_likelihood_ratio<right_threshold_level)[0]
-        if not right_below_threshold.any():
+        right_above_threshold = right_likelihood_ratio>right_threshold_level
+        cross_below_threshold = next((i for i in range(len(right_above_threshold))[::-1] if right_above_threshold[i]==False), None)
+        if cross_below_threshold==(len(right_above_threshold)-1):
+            #right_threshold = right_x[-1]+1 #Signal is never beyond threshold. Place threshold beyond the range of the data
+            right_threshold = float('inf')
+        elif cross_below_threshold==None:
             right_threshold = right_x[0]
-        elif right_below_threshold[-1]==len(right_x):
-            right_threshold = right_x[-1]+1
         else:
-            right_threshold = right_x[right_below_threshold[-1]]
+            right_threshold = right_x[cross_below_threshold+1]
+        
+        if plot:
+            from numpy import concatenate
+            x = concatenate((left_x[1:], right_x), 1)
+            y = concatenate((left_likelihood_ratio, right_likelihood_ratio), 1)
 
+            from matplotlib import pyplot
+            pyplot.plot(x,y)
+            pyplot.plot([left_threshold, left_threshold], pyplot.xlim())
+            pyplot.plot([right_threshold, right_threshold], pyplot.xlim())
+            return left_threshold, right_threshold, x, y
         return left_threshold, right_threshold

@@ -1119,6 +1119,7 @@ def signal_variability(data, subplots=False, title=None, density_limits=(-20,0),
         columns = 1
         channelNum = arange(data.shape[0])
 
+    active_senors = 0
     for row in range(rows):
         for column in range(columns):
             if type(channelNum)==int and channelNum>=data.shape[0]:
@@ -1158,8 +1159,15 @@ def signal_variability(data, subplots=False, title=None, density_limits=(-20,0),
                 ax.plot(((right_threshold-dmean)/dstd, (right_threshold-dmean)/dstd), plt.ylim())
             channelNum += 1
 
+            if left_threshold!=float('-inf') or right_threshold!=float('inf'):
+                active_senors += 1
+
     if title:
         plt.suptitle(title)
+    else:
+        plt.suptitle('Number of active sensors: '+str(active_senors))
+
+    return active_senors
 
 def likelihood_threshold(d, threshold_level=10, comparison_distribution='norm', comparison_parameters=False, plot=False):
     from numpy import shape

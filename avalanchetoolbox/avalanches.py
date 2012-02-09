@@ -88,10 +88,11 @@ def run_analysis(data,\
     if time_scale=='mean_iei':
         time_scale = round(m['interevent_intervals'].mean())
         print("Time scale: %f time steps" % time_scale)
-        if time_scale==float('nan'):
+        from numpy import isnan
+        if isnan(time_scale):
             if metrics['event_times'].any():
-                time_scale==1
-            print("One event found, using time scale of 1 time step")
+                time_scale=1
+                print("One event found, using time scale of 1 time step")
 
 
 

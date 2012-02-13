@@ -139,13 +139,13 @@ def band_filter(data, band, sampling_rate=1000.0, taps=513.0, window_type='black
     """docstring for band_filter"""
     from numpy import array, floor
     #Some neuroscience specific frequency bands
-    bands = {'delta': (array([4.0]), True),
+    bands = {'delta': (array([1.0, 4.0]), False),
             'theta': (array([4.0,8.0]), False),
             'alpha': (array([8.0,12.0]), False),
             'beta': (array([12.0,30.0]), False),
             'gamma': (array([30.0,80.0]), False),
             'high-gamma': (array([80.0, 100.0]), False),
-            'broad': (array([100.0]), True),
+            'broad': (array([1.0, 100.0]), False),
             }
     if band=='raw':
         return data

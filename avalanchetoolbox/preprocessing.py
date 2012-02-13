@@ -135,7 +135,7 @@ def HDF5_filter(file, sampling_rate,\
                     file[version+'/'+band].attrs['processing_date'] = strftime("%Y-%m-%d", gmtime())
                 return
 
-def band_filter(data, band, sampling_rate=1000.0, taps=513.0, window_type='blackmanharris', downsample=True):
+def band_filter(data, band, sampling_rate=1000.0, taps=25.0, window_type='hamming', downsample=True):
     """docstring for band_filter"""
     from numpy import array, floor
     #Some neuroscience specific frequency bands

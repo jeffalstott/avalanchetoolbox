@@ -13,10 +13,13 @@ def run_analysis(data,\
         HDF5_group=None):
     """docstring for avalanche_analysis  """
 
-    import h5py
-#See if we've just been passed a reference to an HDF5 file. If so, load the relevant section.
-    if type(data)==unicode or type(data)==str:
-        data = h5py.File(data)[HDF5_group]
+    try:
+        import h5py
+    #See if we've just been passed a reference to an HDF5 file. If so, load the relevant section.
+        if type(data)==unicode or type(data)==str:
+            data = h5py.File(data)[HDF5_group]
+    except ImportError:
+        data = data
 
 #If we don't have a name for the spatial or temporal samples, generate one
     if not spatial_sample_name:
@@ -38,18 +41,21 @@ def run_analysis(data,\
             return 'Calculation aborted for version '+version+' as results already exist and the option overwrite=False'
 
 #If we're reading from a HDF5 file, load what data is available
-    if type(data)==h5py._hl.group.Group:
-        if 'displacement' in data:
-            data_displacement = data['displacement'][:,:]
+    try:
+        if type(data)==h5py._hl.group.Group:
+            if 'displacement' in data:
+                data_displacement = data['displacement'][:,:]
+            else:
+                raise IOError("'When using an HDF5 input, need a dataset called 'displacement'")
+            if 'amplitude' in data:
+                data_amplitude = data['amplitude'][:,:]
+            if 'displacement_aucs' in data:
+                data_displacement_aucs = data['displacement_aucs'][:,:]
+            if 'amplitude_aucs' in data:
+                data_amplitude_aucs = data['amplitude_aucs'][:,:]
         else:
-            raise IOError("'When using an HDF5 input, need a dataset called 'displacement'")
-        if 'amplitude' in data:
-            data_amplitude = data['amplitude'][:,:]
-        if 'displacement_aucs' in data:
-            data_displacement_aucs = data['displacement_aucs'][:,:]
-        if 'amplitude_aucs' in data:
-            data_amplitude_aucs = data['amplitude_aucs'][:,:]
-    else:
+            data_displacement = data
+    except ImportError:
         data_displacement = data
 
     n_rows, n_columns = data_displacement.shape
@@ -1100,10 +1106,13 @@ def tgrowth_graph(data, measure='amplitudes', time_steps=50, x_min=-2, x_max=2):
 
 def signal_variability(data, subplots=False, title=None, density_limits=(-20,0), threshold_level=10):
 
-    import h5py
-    if type(data)==h5py._hl.dataset.Dataset:
-        title = data.file.filename+data.name
-        data = data[:,:]
+    try:
+        import h5py
+        if type(data)==h5py._hl.dataset.Dataset:
+            title = data.file.filename+data.name
+            data = data[:,:]
+    except ImportError:
+        data = data
 
     from numpy import histogram, log, arange, sign
     import matplotlib.pyplot as plt
@@ -1183,6 +1192,7 @@ def likelihood_threshold(d, threshold_level=10, comparison_distribution='norm', 
         right_threshold_level = threshold_level
 
     d = d.flatten()
+    n = float(len(d))
 
     if comparison_distribution=='expon':
         print("Not implemented yet. Sorry.")
@@ -1195,8 +1205,8 @@ def likelihood_threshold(d, threshold_level=10, comparison_distribution='norm', 
         dmean = comparison_parameters[0]
         dstd = comparison_parameters[1]
         n = float(len(d))
-        n_below_mean = sum(d<=dmean)
-        n_above_mean = sum(d>dmean)
+        n_below_mean = (d<=dmean).sum()
+        n_above_mean = (d>dmean).sum()
 
         left_pX, left_x = cumulative_distribution_function(d[d<dmean], survival=False)
         left_pX = (left_pX*n_below_mean)/n

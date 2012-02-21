@@ -295,15 +295,16 @@ def find_events(signal, thresholds_up=None, thresholds_down=None,\
     sample_mask = spatial_mask*temporal_mask
 
     #Threshold mask
-    up_mask = transpose(transpose(signal)>=thresholds_up)*1
-    down_mask = transpose(transpose(signal)<=thresholds_down)*1
+    if any(thresholds_up):
+        up_mask = transpose(transpose(signal)>=thresholds_up)*1
+    else:
+        up_mask = zeros((n_channels, n_time_points))
+    if any(thresholds_down):
+        down_mask = transpose(transpose(signal)<=thresholds_down)*1
+    else:
+        down_mask = zeros((n_channels, n_time_points))
 
-    if any(thresholds_up) and any(thresholds_down):
-        threshold_mask = up_mask+down_mask
-    elif any(thresholds_up):
-        threshold_mask = up_mask
-    elif any(thresholds_down):
-        threshold_mask = down_mask
+    threshold_mask = up_mask+down_mask
 
     #Event Definition
     if event_detection=='all':

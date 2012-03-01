@@ -1105,7 +1105,147 @@ def tgrowth_graph(data, measure='amplitudes', time_steps=50, x_min=-2, x_max=2):
     ax.set_xlabel('Timestep in Avalanche')
     plt.show()
 
-def signal_variability(data, subplots=False, title=None, density_limits=(-20,0), threshold_level=10):
+def event_histogram(data, time_steps_out=100, gap_range=(1,50)):
+
+    from numpy import where, concatenate
+    from bisect import bisect_left
+    if type(data)==dict:
+        event_times = data['event_times']
+        iei = data['interevent_intervals']
+    elif type(data)==tuple:
+        event_times = data[0]
+        iei = data[1]
+    else:
+        from numpy import diff
+        if not all(data[i] <= data[i+1] for i in range(len(data)-1)):
+            from numpy import sort
+            data = sort(data)
+        event_times = data
+        iei = diff(event_times)
+
+    gap_lengths = range(gap_range[0], gap_range[1])
+    n_gaps = len(gap_lengths)
+    from numpy import floor, ceil, sqrt
+
+    import matplotlib.pyplot as plt
+    fig_exact = plt.figure()
+    fig_minimum = plt.figure()
+
+    from numpy import mean, std
+    sigma_means_exact = []
+    sigma_stds_exact = []
+    sigma_means_minimum = []
+    sigma_stds_minimum = []
+
+    for gap_n in range(n_gaps):
+        gap_length = gap_lengths[gap_n]
+        ax = fig_exact.add_subplot(floor(sqrt(n_gaps)), ceil(sqrt(n_gaps)), gap_n)
+        gaps_exact = where(iei==gap_length)[0]
+        event_times_in_run=array([])
+        sigmas = []
+        for j in gaps_exact:
+            start_value = event_times[j+1]
+            stop_index = bisect_left(event_times, start_value+time_steps_out)
+            event_times_in_run = concatenate((event_times_in_run, event_times[(j+1):stop_index]-start_value))
+
+            start_time = event_times[j+1]
+            start_index = j+1
+            first_bin = bisect_left(event_times, start_time+gap_length)
+            second_bin = bisect_left(event_times, start_time+2*gap_length)
+            sigmas.append((second_bin-first_bin)/ \
+                    (first_bin-start_index))
+        sigma_means_exact.append(mean(sigmas))
+        sigma_stds_exact.append(std(sigmas))
+
+        plt.hist(event_times_in_run, normed=True)
+        plt.ylim(0,.03)
+        ax.set_yticklabels([])
+        ax.set_xticklabels([])
+        plt.plot((gap_length,gap_length),plt.ylim())
+        plt.plot((2*gap_length,2*gap_length),plt.ylim())
+
+        ax = fig_minimum.add_subplot(floor(sqrt(n_gaps)), ceil(sqrt(n_gaps)), gap_n)
+        gaps_minimum = where(iei==gap_length)[0]
+        event_times_in_run=array([])
+        sigmas = []
+        for j in gaps_minimum:
+            start_value = event_times[j+1]
+            stop_index = bisect_left(event_times, start_value+time_steps_out)
+            event_times_in_run = concatenate((event_times_in_run, event_times[(j+1):stop_index]-start_value))
+
+            start_time = event_times[j+1]
+            start_index = j+1
+            first_bin = bisect_left(event_times, start_time+gap_length)
+            second_bin = bisect_left(event_times, start_time+2*gap_length)
+            sigmas.append((second_bin-first_bin)/ \
+                    (first_bin-start_index))
+        sigma_means_minimum.append(mean(sigmas))
+        sigma_stds_minimum.append(std(sigmas))
+
+        plt.hist(event_times_in_run, normed=True)
+        plt.ylim(0,.03)
+        ax.set_yticklabels([])
+        ax.set_xticklabels([])
+        plt.plot((gap_length,gap_length),plt.ylim())
+        plt.plot((2*gap_length,2*gap_length),plt.ylim())
+
+    plt.show()
+    ax = plt.figure()
+    import powerlaw
+    powerlaw.plot_cdf(iei, name='Interevent Intervals')
+    plt.show()
+
+    fig = plt.figure()
+    from numpy import log
+    ax1 = fig.add_subplot(111)
+    ax1.plot(gap_lengths, log(sigma_means_exact))
+    ax1.set_ylabel('Sigma, Exact Gap')
+    ax1.set_xlabel('Gap Before Avalanche')
+    plt.ylim(-1,1)
+
+    ax2 = ax1.twinx()
+    ax2.plot(gap_lengths, log(sigma_means_minimum))
+    ax2.set_ylabel('Sigma, Minimal Gap')
+    plt.ylim(-1,1)
+    plt.show()
+
+def sigma_vs_timegap(data, gap_range=(1,100)):
+
+    if type(data)==dict:
+        event_times = data['event_times']
+        iei = data['interevent_intervals']
+    elif type(data)==tuple:
+        event_times = data[0]
+        iei = data[1]
+    else:
+        from numpy import diff
+        if not all(data[i] <= data[i+1] for i in range(len(data)-1)):
+            from numpy import sort
+            data = sort(data)
+        event_times = data
+        iei = diff(event_times)
+
+    gap_lengths = range(gap_range[0], gap_range[1])
+    from numpy import mean, std
+    sigma_means = []
+    sigma_stds = []
+
+    for gap_length in gap_lengths:
+        gaps = where(iei>=gap_length)[0]
+        sigmas = []
+        for j in gaps:
+            start_time = event_times[j+1]
+            start_index = j+1
+            first_bin = bisect_left(event_times, start_time+gap_length)
+            second_bin = bisect_left(event_times, start_time+2*gap_length)
+            sigmas.append((second_bin-first_bin)/ \
+                    (first_bin-start_index))
+        sigma_means.append(mean(sigmas))
+        sigma_stds.append(std(sigmas))
+
+    return sigma_means, sigma_stds
+
+def signal_variability(data, subplots='all', title=None, density_limits=(-20,0), threshold_level=10):
 
     try:
         import h5py
@@ -1120,14 +1260,19 @@ def signal_variability(data, subplots=False, title=None, density_limits=(-20,0),
 
     plt.figure()
 #   plt.figure(1)
-    if subplots:
-        rows = subplots[0]
-        columns = subplots[1]
-        channelNum = 0
-    else:
+    if not subplots:
         rows = 1
         columns = 1
         channelNum = arange(data.shape[0])
+    elif subplots=='all':
+        from numpy import ceil, sqrt
+        channelNum = 0
+        rows = ceil(sqrt(data.shape[0])).astype(int)
+        columns = ceil(sqrt(data.shape[0])).astype(int)
+    else:
+        rows = subplots[0]
+        columns = subplots[1]
+        channelNum = 0
 
     active_senors = 0
     for row in range(rows):

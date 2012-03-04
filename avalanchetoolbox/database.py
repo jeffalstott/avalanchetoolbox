@@ -14,25 +14,16 @@ class Base(object):
         return cls.__name__
     id = Column(Integer, primary_key=True)
 
-Base = declarative_base(cls=Base)
-
-
-class Task(Base):
-    type = Column(String(100))
-    description = Column(String(100))
-    eyes = Column(String(100))
-
     def __repr__(self):
-        return "<%s(type='%s', description='%s',)>" % (self.__class__.__name__, self.type, self.description)
+        return str(vars(self))
+
+Base = declarative_base(cls=Base)
 
 class Subject(Base):
     species = Column(String(100))
     name = Column(String(100))
     group_name = Column(String(100))
     number_in_group = Column(Integer)
-
-    def __repr__(self):
-        return "<%s(species='%s', group='%s')>" % (self.__class__.__name__, self.species, self.group_name)
 
 class Sensor(Base):
     location = Column(String(100))
@@ -41,21 +32,17 @@ class Sensor(Base):
     sensors_locations_file = Column(String(100))
     sensors_spacing = Column(Float)
 
-    def __repr__(self):
-        return "<%s(location='%s', type='%s', count='%s')>" % \
-                (self.__class__.__name__, self.location, self.sensor_type, self.sensor_count)
-
 class Channel(Base):
     number = Column(Integer)
     name = Column(String(100))
 
     sensor_id = Column(Integer, ForeignKey('Sensor.id'))
-    sensor = relationship(Sensor, cascade="all, delete-orphan", backref=backref('channels')) #, order_by=id))
+    sensor = relationship(Sensor, cascade="all, delete-orphan", backref=backref('channels'), single_parent=True)
 
-    def __repr__(self):
-        return "<%s(location='%s', type='%s', count='%s')>" % \
-                (self.__class__.__name__, self.location, self.sensor_type, self.sensor_count)
-
+class Task(Base):
+    type = Column(String(100))
+    description = Column(String(100))
+    eyes = Column(String(100))
 
 class Experiment(Base):
     location = Column(String(100))
@@ -66,14 +53,10 @@ class Experiment(Base):
     rest = Column(String(100))
 
     subject_id = Column(Integer, ForeignKey('Subject.id'))
+    subject = relationship(Subject, cascade="all, delete-orphan", backref=backref('experiments'), single_parent=True)
+
     task_id = Column(Integer, ForeignKey('Task.id'))
-
-    subject = relationship(Subject, cascade="all, delete-orphan", backref=backref('experiments')) #, order_by=id))
-    task = relationship(Task, cascade="all, delete-orphan", backref=backref('experiments')) #, order_by=id))
-
-    def __repr__(self):
-        return "<%s(subject='%s', visit='%s', task='%s')>" % \
-                (self.__class__.__name__, self.subject_id, self.visit_number, self.task_id)
+    task = relationship(Task, cascade="all, delete-orphan", backref=backref('experiments'), single_parent=True)
 
 class Task_Performance(Base):
     measure1_name = Column(String(100)) 
@@ -97,17 +80,11 @@ class Task_Performance(Base):
     measure10_name = Column(String(100))
     measure10_value = Column(Float)
 
-    subject_id = Column(Integer, ForeignKey('Subject.id'))
     task_id = Column(Integer, ForeignKey('Task.id'))
+    task = relationship(Task, cascade="all, delete-orphan", backref=backref('task_performances'), single_parent=True)
+
     experiment_id = Column(Integer, ForeignKey('Experiment.id'))
-
-    subject = relationship(Subject, cascade="all, delete-orphan", backref=backref('task_performances')) #, order_by=id))
-    task = relationship(Task, cascade="all, delete-orphan", backref=backref('task_performances')) #, order_by=id))
-    experiment = relationship(Experiment, cascade="all, delete-orphan", backref=backref('task_performances')) #, order_by=id))
-
-    def __repr__(self):
-        return "<%s(subject='%s', experiment='%s', task='%s')>" % \
-                (self.__class__.__name__, self.subject_id, self.experiment_id, self.task_id)
+    experiment = relationship(Experiment, cascade="all, delete-orphan", backref=backref('task_performances'), single_parent=True)
 
 class Recording(Base):
     duration = Column(Float)
@@ -116,19 +93,11 @@ class Recording(Base):
     transd = Column(Boolean)
     eye_movement_removed = Column(Boolean)
 
-    subject_id = Column(Integer, ForeignKey('Subject.id'))
-    task_id = Column(Integer, ForeignKey('Task.id'))
     experiment_id = Column(Integer, ForeignKey('Experiment.id'))
+    experiment = relationship(Experiment, cascade="all, delete-orphan", backref=backref('recordings'), single_parent=True)
+
     sensor_id = Column(Integer, ForeignKey('Sensor.id'))
-
-    subject = relationship(Subject, cascade="all, delete-orphan", backref=backref('recordings')) #, order_by=id))
-    task = relationship(Task, cascade="all, delete-orphan", backref=backref('recordings')) #, order_by=id))
-    experiment = relationship(Experiment, cascade="all, delete-orphan", backref=backref('recordings')) #, order_by=id))
-    sensor = relationship(Sensor, cascade="all, delete-orphan", backref=backref('recordings')) #, order_by=id))
-
-    def __repr__(self):
-        return "<%s(subject='%s', experiment='%s', task='%s', sensor='%s')>" % \
-                (self.__class__.__name__, self.subject_id, self.experiment_id, self.task_id, self.sensor_id)
+    sensor = relationship(Sensor, cascade="all, delete-orphan", backref=backref('recordings'), single_parent=True)
 
 class Filter(Base):
     filter_type = Column(String(100))
@@ -142,21 +111,8 @@ class Filter(Base):
     notch = Column(Boolean)
     phase_shuffled = Column(Boolean)
 
-    subject_id = Column(Integer, ForeignKey('Subject.id'))
-    task_id = Column(Integer, ForeignKey('Task.id'))
-    experiment_id = Column(Integer, ForeignKey('Experiment.id'))
     recording_id = Column(Integer, ForeignKey('Recording.id'))
-    sensor_id = Column(Integer, ForeignKey('Sensor.id'))
-
-    subject = relationship(Subject, cascade="all, delete-orphan", backref=backref('filters')) #, order_by=id))
-    task = relationship(Task, cascade="all, delete-orphan", backref=backref('filters')) #, order_by=id))
-    experiment = relationship(Experiment, cascade="all, delete-orphan", backref=backref('filters')) #, order_by=id))
-    sensor = relationship(Sensor, cascade="all, delete-orphan", backref=backref('filters')) #, order_by=id))
-    recording = relationship(Recording, cascade="all, delete-orphan", backref=backref('filters')) #, order_by=id))
-
-    def __repr__(self):
-        return "<%s(subject='%s', experiment='%s', task='%s', sensor='%s', band='%s')>" % \
-                (self.__class__.__name__, self.subject_id, self.experiment_id, self.task_id, self.sensor_id, self.band_name)
+    recording = relationship(Recording, cascade="all, delete-orphan", backref=backref('filters'), single_parent=True)
 
 class Threshold(Base):
     mode = Column(String(100))
@@ -165,27 +121,11 @@ class Threshold(Base):
     down = Column(Float)
     mean = Column(Float)
 
-    channel = Column(Integer, ForeignKey('Channel.number'))
-    channel_id = Column(Integer, ForeignKey('Subject.id'))
+    channel_id = Column(Integer, ForeignKey('Channel.id'))
+    channel = relationship(Channel, cascade="all, delete-orphan", backref=backref('thresholds'), single_parent=True)
 
-    subject_id = Column(Integer, ForeignKey('Subject.id'))
-    task_id = Column(Integer, ForeignKey('Task.id'))
-    experiment_id = Column(Integer, ForeignKey('Experiment.id'))
-    recording_id = Column(Integer, ForeignKey('Recording.id'))
     filter_id = Column(Integer, ForeignKey('Filter.id'))
-    sensor_id = Column(Integer, ForeignKey('Sensor.id'))
-
-    subject = relationship(Subject, cascade="all, delete-orphan", backref=backref('thresholds')) #, order_by=id))
-    task = relationship(Task, cascade="all, delete-orphan", backref=backref('thresholds')) #, order_by=id))
-    experiment = relationship(Experiment, cascade="all, delete-orphan", backref=backref('thresholds')) #, order_by=id))
-    sensor = relationship(Sensor, cascade="all, delete-orphan", backref=backref('thresholds')) #, order_by=id))
-    channel = relationship(Channel, cascade="all, delete-orphan", backref=backref('thresholds')) #, order_by=id))
-    recording = relationship(Recording, cascade="all, delete-orphan", backref=backref('thresholds')) #, order_by=id))
-    filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('thresholds')) #, order_by=id))
-
-    def __repr__(self):
-        return "<%s(subject='%s', experiment='%s', task='%s', sensor='%s', channel='%s')>" % \
-                (self.__class__.__name__, self.subject_id, self.experiment_id, self.task_id, self.sensor_id, self.channel_id)
+    filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('thresholds'), single_parent=True)
 
 class Event(Base):
     time = Column(Integer)
@@ -196,35 +136,17 @@ class Event(Base):
     interval = Column(Integer)
     signal = Column(String(100))
     detection = Column(String(100))
-    direction = Column(String(10))
+    direction = Column(String(100))
 
-    channel = Column(Integer, ForeignKey('Channel.number'))
-    channel_id = Column(Integer, ForeignKey('Subject.id'))
+    channel_id = Column(Integer, ForeignKey('Channel.id'))
+    channel = relationship(Channel, cascade="all, delete-orphan", backref=backref('events'), single_parent=True)
 
-    subject_id = Column(Integer, ForeignKey('Subject.id'))
-    task_id = Column(Integer, ForeignKey('Task.id'))
-    experiment_id = Column(Integer, ForeignKey('Experiment.id'))
-    recording_id = Column(Integer, ForeignKey('Recording.id'))
-    filter_id = Column(Integer, ForeignKey('Filter.id'))
-    sensor_id = Column(Integer, ForeignKey('Sensor.id'))
     threshold_id = Column(Integer, ForeignKey('Threshold.id'))
-
-    subject = relationship(Subject, cascade="all, delete-orphan", backref=backref('events')) #, order_by=id))
-    task = relationship(Task, cascade="all, delete-orphan", backref=backref('events')) #, order_by=id))
-    experiment = relationship(Experiment, cascade="all, delete-orphan", backref=backref('events')) #, order_by=id))
-    sensor = relationship(Sensor, cascade="all, delete-orphan", backref=backref('events')) #, order_by=id))
-    recording = relationship(Recording, cascade="all, delete-orphan", backref=backref('events')) #, order_by=id))
-    filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('events')) #, order_by=id))
-
-    def __repr__(self):
-        return "<%s(subject='%s', experiment='%s', task='%s', sensor='%s', threshold='%s')>" % \
-                (self.__class__.__name__, self.subject_id, self.experiment_id, self.task_id, self.sensor_id, self.threshold_level)
-
+    filter = relationship(Threshold, cascade="all, delete-orphan", backref=backref('events'), single_parent=True)
 
 class Fit_Association(Base):
     """Associates a collection of Fit objects
     with a particular analysis.
-    
     """
 
     @classmethod
@@ -262,7 +184,7 @@ class HasFits(object):
                 )
         return relationship(Fit_Association, 
                     cascade="all, delete-orphan", backref=backref("%s_analysis" % discriminator, 
-                                        uselist=False))
+                                        uselist=False), single_parent=True)
 
 class AvalancheAnalysis(HasFits,Base):
     spatial_sample = Column(String(100))
@@ -298,28 +220,14 @@ class AvalancheAnalysis(HasFits,Base):
     t_ratio_amplitude_aucs_slope = Column(Float)
     t_ratio_amplitude_aucs_R = Column(Float)
     t_ratio_amplitude_aucs_p = Column(Float)
-    
-    subject_id = Column(Integer, ForeignKey('Subject.id'))
-    task_id = Column(Integer, ForeignKey('Task.id'))
-    experiment_id = Column(Integer, ForeignKey('Experiment.id'))
-    recording_id = Column(Integer, ForeignKey('Recording.id'))
+
     filter_id = Column(Integer, ForeignKey('Filter.id'))
-    sensor_id = Column(Integer, ForeignKey('Sensor.id'))
-
-    subject = relationship(Subject, cascade="all, delete-orphan", backref=backref('avalancheanalyses')) #, order_by=id))
-    task = relationship(Task, cascade="all, delete-orphan", backref=backref('avalancheanalyses')) #, order_by=id))
-    experiment = relationship(Experiment, cascade="all, delete-orphan", backref=backref('avalancheanalyses')) #, order_by=id))
-    sensor = relationship(Sensor, cascade="all, delete-orphan", backref=backref('avalancheanalyses')) #, order_by=id))
-    recording = relationship(Recording, cascade="all, delete-orphan", backref=backref('avalancheanalyses')) #, order_by=id))
-    filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('avalancheanalyses')) #, order_by=id))
-
-    def __repr__(self):
-        return "<%s(subject='%s', experiment='%s', task='%s', sensor='%s', threshold='%s', timescale='%s')>" % \
-                (self.__class__.__name__, self.subject_id, self.experiment_id, self.task_id, self.sensor_id, self.threshold_level, self.time_scale)
+    filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('avalancheanalyses'), single_parent=True)
 
 class Fit(Base):
     analysis_type = Column(String(100)) 
     variable = Column(String(100)) 
+    method = Column(String(100))
     distribution = Column(String(100)) 
     parameter1_name = Column(String(100)) 
     parameter1_value = Column(Float) 
@@ -332,7 +240,8 @@ class Fit(Base):
     fixed_xmax = Column(Boolean)
     xmax = Column(Float)
     loglikelihood = Column(Float) 
-    loglikelihood_ratio = Column(Float) 
+    power_law_loglikelihood_ratio = Column(Float) 
+    truncated_power_law_loglikelihood_ratio = Column(Float) 
     KS = Column(Float)
     D_plus_critical_branching = Column(Float)
     D_minus_critical_branching = Column(Float)
@@ -341,29 +250,11 @@ class Fit(Base):
     n_tail = Column(Integer)
     noise_flag = Column(Boolean)
     discrete = Column(Boolean)
-    
+
     analysis_id = Column(Integer)
-    subject_id = Column(Integer, ForeignKey('Subject.id'))
-    task_id = Column(Integer, ForeignKey('Task.id'))
-    experiment_id = Column(Integer, ForeignKey('Experiment.id'))
-    recording_id = Column(Integer, ForeignKey('Recording.id'))
-    filter_id = Column(Integer, ForeignKey('Filter.id'))
-    sensor_id = Column(Integer, ForeignKey('Sensor.id'))
-
-    association_id = Column(Integer, ForeignKey("Fit_Association.id"))
-    association = relationship(Fit_Association, cascade="all, delete-orphan", backref="fits")
     analysis = association_proxy("association", "analysis")
-
-    subject = relationship(Subject, cascade="all, delete-orphan", backref=backref('fits')) #, order_by=id))
-    task = relationship(Task, cascade="all, delete-orphan", backref=backref('fits')) #, order_by=id))
-    experiment = relationship(Experiment, cascade="all, delete-orphan", backref=backref('fits')) #, order_by=id))
-    sensor = relationship(Sensor, cascade="all, delete-orphan", backref=backref('fits')) #, order_by=id))
-    recording = relationship(Recording, cascade="all, delete-orphan", backref=backref('fits')) #, order_by=id))
-    filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('fits')) #, order_by=id))
-
-    def __repr__(self):
-        return "<%s(subject='%s', experiment='%s', task='%s', sensor='%s', variable='%s', distribution='%s')>" % \
-                (self.__class__.__name__, self.subject_id, self.experiment_id, self.task_id, self.sensor_id, self.variable, self.distribution)
+    association_id = Column(Integer, ForeignKey("Fit_Association.id"))
+    association = relationship(Fit_Association, cascade="all, delete-orphan", backref="fits", single_parent=True)
 
 class Avalanche(Base):
     duration = Column(Integer)
@@ -377,26 +268,8 @@ class Avalanche(Base):
     sigma_displacement_aucs = Column(Float)
     sigma_amplitude_aucs = Column(Float)
 
-    subject_id = Column(Integer, ForeignKey('Subject.id'))
-    task_id = Column(Integer, ForeignKey('Task.id'))
-    experiment_id = Column(Integer, ForeignKey('Experiment.id'))
-    recording_id = Column(Integer, ForeignKey('Recording.id'))
-    filter_id = Column(Integer, ForeignKey('Filter.id'))
-    sensor_id = Column(Integer, ForeignKey('Sensor.id'))
     analysis_id = Column(Integer, ForeignKey('AvalancheAnalysis.id'))
-
-    subject = relationship(Subject, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
-    task = relationship(Task, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
-    experiment = relationship(Experiment, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
-    sensor = relationship(Sensor, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
-    recording = relationship(Recording, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
-    filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
-    analysis = relationship(Filter, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
-    
-
-    def __repr__(self):
-        return "<%s(subject='%s', experiment='%s', task='%s', sensor='%s', threshold='%s', timescale='%s')>" % \
-                (self.__class__.__name__, self.subject_id, self.experiment_id, self.task_id, self.sensor_id, self.threshold_level, self.time_scale)
+    analysis = relationship(AvalancheAnalysis, cascade="all, delete-orphan", backref=backref('avalanches'), single_parent=True)
 
 def create_database(url):
     from sqlalchemy import create_engine

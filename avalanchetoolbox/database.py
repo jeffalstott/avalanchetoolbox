@@ -1,4 +1,4 @@
-#Some code, particularly how to join up the Fit table with the Avalanche_Analysis with a polymorphic association, taken from http://techspot.zzzeek.org/files/2007/discriminator_on_association.py
+#Some code, particularly how to join up the Fit table with the AvalancheAnalysis with a polymorphic association, taken from http://techspot.zzzeek.org/files/2007/discriminator_on_association.py
 #This polymorphic association was set up in order to allow for future, different kinds of analyses that also would warrant distribution fit analyses
 from sqlalchemy import Column, Float, Integer, String, Boolean, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
@@ -44,6 +44,18 @@ class Sensor(Base):
     def __repr__(self):
         return "<%s(location='%s', type='%s', count='%s')>" % \
                 (self.__class__.__name__, self.location, self.sensor_type, self.sensor_count)
+
+class Channel(Base):
+    number = Column(Integer)
+    name = Column(String(100))
+
+    sensor_id = Column(Integer, ForeignKey('Sensor.id'))
+    sensor = relationship(Sensor, cascade="all, delete-orphan", backref=backref('channels')) #, order_by=id))
+
+    def __repr__(self):
+        return "<%s(location='%s', type='%s', count='%s')>" % \
+                (self.__class__.__name__, self.location, self.sensor_type, self.sensor_count)
+
 
 class Experiment(Base):
     location = Column(String(100))
@@ -146,13 +158,74 @@ class Filter(Base):
         return "<%s(subject='%s', experiment='%s', task='%s', sensor='%s', band='%s')>" % \
                 (self.__class__.__name__, self.subject_id, self.experiment_id, self.task_id, self.sensor_id, self.band_name)
 
+class Threshold(Base):
+    mode = Column(String(100))
+    level = Column(Float)
+    up = Column(Float)
+    down = Column(Float)
+    mean = Column(Float)
+
+    channel = Column(Integer, ForeignKey('Channel.number'))
+    channel_id = Column(Integer, ForeignKey('Subject.id'))
+
+    subject_id = Column(Integer, ForeignKey('Subject.id'))
+    task_id = Column(Integer, ForeignKey('Task.id'))
+    experiment_id = Column(Integer, ForeignKey('Experiment.id'))
+    recording_id = Column(Integer, ForeignKey('Recording.id'))
+    filter_id = Column(Integer, ForeignKey('Filter.id'))
+    sensor_id = Column(Integer, ForeignKey('Sensor.id'))
+
+    subject = relationship(Subject, cascade="all, delete-orphan", backref=backref('thresholds')) #, order_by=id))
+    task = relationship(Task, cascade="all, delete-orphan", backref=backref('thresholds')) #, order_by=id))
+    experiment = relationship(Experiment, cascade="all, delete-orphan", backref=backref('thresholds')) #, order_by=id))
+    sensor = relationship(Sensor, cascade="all, delete-orphan", backref=backref('thresholds')) #, order_by=id))
+    channel = relationship(Channel, cascade="all, delete-orphan", backref=backref('thresholds')) #, order_by=id))
+    recording = relationship(Recording, cascade="all, delete-orphan", backref=backref('thresholds')) #, order_by=id))
+    filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('thresholds')) #, order_by=id))
+
+    def __repr__(self):
+        return "<%s(subject='%s', experiment='%s', task='%s', sensor='%s', channel='%s')>" % \
+                (self.__class__.__name__, self.subject_id, self.experiment_id, self.task_id, self.sensor_id, self.channel_id)
+
+class Event(Base):
+    time = Column(Integer)
+    displacement = Column(Float)
+    amplitude = Column(Float)
+    amplitude_auc = Column(Float)
+    displacement_auc = Column(Float)
+    interval = Column(Integer)
+    signal = Column(String(100))
+    detection = Column(String(100))
+    direction = Column(String(10))
+
+    channel = Column(Integer, ForeignKey('Channel.number'))
+    channel_id = Column(Integer, ForeignKey('Subject.id'))
+
+    subject_id = Column(Integer, ForeignKey('Subject.id'))
+    task_id = Column(Integer, ForeignKey('Task.id'))
+    experiment_id = Column(Integer, ForeignKey('Experiment.id'))
+    recording_id = Column(Integer, ForeignKey('Recording.id'))
+    filter_id = Column(Integer, ForeignKey('Filter.id'))
+    sensor_id = Column(Integer, ForeignKey('Sensor.id'))
+    threshold_id = Column(Integer, ForeignKey('Threshold.id'))
+
+    subject = relationship(Subject, cascade="all, delete-orphan", backref=backref('events')) #, order_by=id))
+    task = relationship(Task, cascade="all, delete-orphan", backref=backref('events')) #, order_by=id))
+    experiment = relationship(Experiment, cascade="all, delete-orphan", backref=backref('events')) #, order_by=id))
+    sensor = relationship(Sensor, cascade="all, delete-orphan", backref=backref('events')) #, order_by=id))
+    recording = relationship(Recording, cascade="all, delete-orphan", backref=backref('events')) #, order_by=id))
+    filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('events')) #, order_by=id))
+
+    def __repr__(self):
+        return "<%s(subject='%s', experiment='%s', task='%s', sensor='%s', threshold='%s')>" % \
+                (self.__class__.__name__, self.subject_id, self.experiment_id, self.task_id, self.sensor_id, self.threshold_level)
+
 
 class Fit_Association(Base):
     """Associates a collection of Fit objects
     with a particular analysis.
     
     """
-    __tablename__ = "Fit_Association"
 
     @classmethod
     def creator(cls, discriminator):
@@ -191,7 +264,7 @@ class HasFits(object):
                     cascade="all, delete-orphan", backref=backref("%s_analysis" % discriminator, 
                                         uselist=False))
 
-class Avalanche(HasFits,Base):
+class AvalancheAnalysis(HasFits,Base):
     spatial_sample = Column(String(100))
     temporal_sample = Column(String(100))
     threshold_mode = Column(String(100))
@@ -233,12 +306,12 @@ class Avalanche(HasFits,Base):
     filter_id = Column(Integer, ForeignKey('Filter.id'))
     sensor_id = Column(Integer, ForeignKey('Sensor.id'))
 
-    subject = relationship(Subject, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
-    task = relationship(Task, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
-    experiment = relationship(Experiment, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
-    sensor = relationship(Sensor, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
-    recording = relationship(Recording, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
-    filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
+    subject = relationship(Subject, cascade="all, delete-orphan", backref=backref('avalancheanalyses')) #, order_by=id))
+    task = relationship(Task, cascade="all, delete-orphan", backref=backref('avalancheanalyses')) #, order_by=id))
+    experiment = relationship(Experiment, cascade="all, delete-orphan", backref=backref('avalancheanalyses')) #, order_by=id))
+    sensor = relationship(Sensor, cascade="all, delete-orphan", backref=backref('avalancheanalyses')) #, order_by=id))
+    recording = relationship(Recording, cascade="all, delete-orphan", backref=backref('avalancheanalyses')) #, order_by=id))
+    filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('avalancheanalyses')) #, order_by=id))
 
     def __repr__(self):
         return "<%s(subject='%s', experiment='%s', task='%s', sensor='%s', threshold='%s', timescale='%s')>" % \
@@ -292,6 +365,39 @@ class Fit(Base):
         return "<%s(subject='%s', experiment='%s', task='%s', sensor='%s', variable='%s', distribution='%s')>" % \
                 (self.__class__.__name__, self.subject_id, self.experiment_id, self.task_id, self.sensor_id, self.variable, self.distribution)
 
+class Avalanche(Base):
+    duration = Column(Integer)
+    size_events = Column(Integer)
+    size_displacements = Column(Float)
+    size_amplitudes = Column(Float)
+    size_amplitude_aucs = Column(Float)
+    sigma_events = Column(Float)
+    sigma_displacements = Column(Float)
+    sigma_amplitudes = Column(Float)
+    sigma_displacement_aucs = Column(Float)
+    sigma_amplitude_aucs = Column(Float)
+
+    subject_id = Column(Integer, ForeignKey('Subject.id'))
+    task_id = Column(Integer, ForeignKey('Task.id'))
+    experiment_id = Column(Integer, ForeignKey('Experiment.id'))
+    recording_id = Column(Integer, ForeignKey('Recording.id'))
+    filter_id = Column(Integer, ForeignKey('Filter.id'))
+    sensor_id = Column(Integer, ForeignKey('Sensor.id'))
+    analysis_id = Column(Integer, ForeignKey('AvalancheAnalysis.id'))
+
+    subject = relationship(Subject, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
+    task = relationship(Task, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
+    experiment = relationship(Experiment, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
+    sensor = relationship(Sensor, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
+    recording = relationship(Recording, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
+    filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
+    analysis = relationship(Filter, cascade="all, delete-orphan", backref=backref('avalanches')) #, order_by=id))
+    
+
+    def __repr__(self):
+        return "<%s(subject='%s', experiment='%s', task='%s', sensor='%s', threshold='%s', timescale='%s')>" % \
+                (self.__class__.__name__, self.subject_id, self.experiment_id, self.task_id, self.sensor_id, self.threshold_level, self.time_scale)
+
 def create_database(url):
     from sqlalchemy import create_engine
 
@@ -303,7 +409,7 @@ def compare(session, *args, **kwargs):
 
     data = session.query(*args).\
         join(Fit_Association).\
-        join(Avalanche, Avalanche.id==Fit_Association.id).\
+        join(AvalancheAnalysis, AvalancheAnalysis.id==Fit_Association.id).\
         join(Filter, Filter.id==Fit.filter_id).\
         join(Recording, Recording.id==Fit.recording_id).\
         join(Experiment, Experiment.id==Fit.experiment_id).\
@@ -318,14 +424,14 @@ def compare(session, *args, **kwargs):
         'Filter.band_name': 'broad',\
         'Filter.downsampled_rate': '1000',\
         'Subject.group_name': None,\
-        'Avalanche.spatial_sample': 'all',\
-        'Avalanche.temporal_sample': 'all',\
-        'Avalanche.threshold_mode': 'SD',\
-        'Avalanche.threshold_level': 3,\
-        'Avalanche.threshold_direction': 'both',\
-        'Avalanche.event_signal': 'displacement',\
-        'Avalanche.event_detection': 'local_extrema',\
-        'Avalanche.cascade_method': 'grid',\
+        'AvalancheAnalysis.spatial_sample': 'all',\
+        'AvalancheAnalysis.temporal_sample': 'all',\
+        'AvalancheAnalysis.threshold_mode': 'SD',\
+        'AvalancheAnalysis.threshold_level': 3,\
+        'AvalancheAnalysis.threshold_direction': 'both',\
+        'AvalancheAnalysis.event_signal': 'displacement',\
+        'AvalancheAnalysis.event_detection': 'local_extrema',\
+        'AvalancheAnalysis.cascade_method': 'grid',\
         'Fit.analysis_type':  'avalanches',\
         'Fit.variable':  'size_events',\
         'Fit.distribution':  'power_law',\
@@ -333,7 +439,7 @@ def compare(session, *args, **kwargs):
         'Fit.xmin': 1,\
         'Fit.fixed_xmax':  True,\
         'Fit.xmax': 204,\
-        'Avalanche.time_scale': 2,\
+        'AvalancheAnalysis.time_scale': 2,\
         }
 
     filters.update(kwargs)

@@ -135,7 +135,7 @@ def HDF5_filter(file, sampling_rate,\
                     file[version+'/'+band].attrs['processing_date'] = strftime("%Y-%m-%d", gmtime())
                 return
 
-def band_filter(data, band, sampling_rate=1000.0, taps=25.0, window_type='hamming', downsample=True):
+def band_filter(data, band, sampling_rate=1000.0, taps=25.0, window_type='hamming', downsample=False):
     """docstring for band_filter"""
     from numpy import array, floor
     #Some neuroscience specific frequency bands
@@ -169,3 +169,38 @@ def band_filter(data, band, sampling_rate=1000.0, taps=25.0, window_type='hammin
     data = data[:,::downsampling_interval]
     downsampled_rate=sampling_rate/downsampling_interval
     return data, frequencies, downsampled_rate
+
+def phaseshuffle(input_signal):
+    """phaseshuffle(input_signal) phaseshuffle shuffles the phases of the component frequencies of a real signal among each other, but preserving the phase of the DC component and any Nyquist element. Input is a matrix of channels x timesteps."""
+
+    ## Fourier Transform to Get Component Frequencies' Phases and Magnitudes
+    length_of_signal = input_signal.shape[1]
+    from numpy.fft import rfft, irfft
+    from numpy import angle, zeros, concatenate, exp
+    from numpy.random import permutation
+    print("Calculating component frequencies and their phases")
+    y = rfft(input_signal, axis=1)
+    magnitudes = abs(y)
+    phases = angle(y)
+
+## Shuffle Phases, Preserving DC component and Nyquist element (if present)
+    number_of_channels, N = y.shape
+    randomized_phases = zeros(y.shape)
+
+    print("Randomizing")
+    for j in range(number_of_channels):
+
+        if N & 1: #If there are an odd number of elements
+            #Retain the DC component and shuffle the remaining components.
+            order = concatenate(([0], permutation(N-1)+1), axis=1)
+        else:
+            #Retain the DC and Nyquist element component and shuffle the remaining components. This makes the new signal real, instead of complex.
+            order = concatenate(([0], permutation(N-2)+1, [-1]), axis=1)
+
+        randomized_phases[j] = phases[j, order]
+
+## Construct New Signal
+    print("Constructing new signal")
+    y1 = magnitudes*exp(1j*randomized_phases)
+    output_signal = irfft(y1,n=length_of_signal, axis=1) #While the above code will produce a real signal when given a real signal, numerical issues sometimes make the output from ifft "complex", with a +/- 0i component. Since the imaginary component is accidental and meaningless, we remove it.
+    return output_signal

@@ -115,31 +115,36 @@ class Filter(Base):
     recording = relationship(Recording, cascade="all, delete-orphan", backref=backref('filters'), single_parent=True)
 
 class Threshold(Base):
+    signal = Column(String(100))
     mode = Column(String(100))
     level = Column(Float)
     up = Column(Float)
     down = Column(Float)
     mean = Column(Float)
 
-    channel_id = Column(Integer, ForeignKey('Channel.id'))
-    channel = relationship(Channel, cascade="all, delete-orphan", backref=backref('thresholds'), single_parent=True)
+    channel = Column(Float)
+    #channel_id = Column(Integer, ForeignKey('Channel.id'))
+    #channel = relationship(Channel, cascade="all, delete-orphan", backref=backref('thresholds'), single_parent=True)
 
     filter_id = Column(Integer, ForeignKey('Filter.id'))
     filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('thresholds'), single_parent=True)
 
 class Event(Base):
     time = Column(Integer)
+    interval = Column(Integer)
+    detection = Column(String(100))
+    direction = Column(String(100))
     displacement = Column(Float)
     amplitude = Column(Float)
     amplitude_auc = Column(Float)
     displacement_auc = Column(Float)
-    interval = Column(Integer)
-    signal = Column(String(100))
-    detection = Column(String(100))
-    direction = Column(String(100))
+    t_ratio_amplitude = Column(Float)
+    t_ratio_displacement = Column(Float)
+    t_ratio_displacement_aucs = Column(Float)
+    t_ratio_amplitude_aucs = Column(Float)
 
-    channel_id = Column(Integer, ForeignKey('Channel.id'))
-    channel = relationship(Channel, cascade="all, delete-orphan", backref=backref('events'), single_parent=True)
+    #channel_id = Column(Integer, ForeignKey('Channel.id'))
+    #channel = relationship(Channel, cascade="all, delete-orphan", backref=backref('events'), single_parent=True)
 
     threshold_id = Column(Integer, ForeignKey('Threshold.id'))
     filter = relationship(Threshold, cascade="all, delete-orphan", backref=backref('events'), single_parent=True)

@@ -632,53 +632,74 @@ class Analysis(object):
         elif name=='data_amplitude_aucs':
             self.data_amplitude_aucs = area_under_the_curve(self.data_amplitude)
             return self.data_amplitude_aucs
-        if name=='thresholds_up' or name=='thresholds_down':
+        elif name=='thresholds_up' or name=='thresholds_down':
             self.thresholds_up, self.thresholds_down = find_thresholds(self.signal, self.threshold_mode, self.threshold_level, self.threshold_direction)
             if name=='thresholds_up':
                 return self.thresholds_up
-            elif name=='thresholds_down':
+            else:
                 return self.thresholds_down
-        elif name=='event_times' or name=='event_channels' or name=='interevent_intervals' or name=='n_events' or name=='iei':
+        elif name=='event_times' or name=='event_channels' or name=='interevent_intervals':
             m = find_events(self.signal, thresholds_up=self.thresholds_up, thresholds_down=self.thresholds_down,
                 event_detection=self.event_detection, spatial_sample=self.spatial_sample, temporal_sample=self.temporal_sample)
             self.event_times = m['event_times']
             self.event_channels = m['event_channels']
             self.interevent_intervals = m['interevent_intervals']
-            self.iei = self.interevent_intervals 
-            self.n_events = len(self.event_times)
-
             if self.time_scale=='mean_iei':
-                self.time_scale = round(m['interevent_intervals'].mean())
+                self.time_scale = round(self.interevent_intervals.mean())
                 print("Time scale: %f time steps" % self.time_scale)
                 from numpy import isnan
                 if isnan(self.time_scale):
                     if self.event_times.any():
                         self.time_scale=1
                         print("One event found, using time scale of 1 time step")
+            if name=='event_times':
+                return self.event_times
+            elif name=='event_channels':
+                return self.event_channels
+            else:
+                return self.interevent_intervals
+        elif name=='iei':
+            self.iei = self.interevent_intervals
+            return self.iei
+        elif name=='n_events':
+            self.n_events = len(self.event_times)
+            return self.n_events
         elif name=='event_displacements':
             self.event_displacements = self.data_displacement[self.event_channels, self.event_times]
             return self.event_displacements
         elif name=='event_amplitudes':
             self.event_amplitudes= self.data_amplitude[self.event_channels, self.event_times]
+            return self.event_amplitudes
         elif name=='event_displacement_aucs':
             self.event_displacement_aucs = self.data_displacement_aucs[self.event_channels, self.event_times]
+            return self.event_displacement_aucs
         elif name=='event_amplitude_aucs':
             self.event_amplitude_aucs = self.data_amplitude_aucs[self.event_channels, self.event_times]
-        elif name=='starts' or name=='stops' or 'durations' or 'durations_silences' or 'n_avalanches':
+            return self.event_amplitude_aucs
+        elif name=='starts' or name=='stops':
             self.starts, self.stops = find_cascades(self.event_times, self.time_scale, self.cascade_method)
+            if name=='starts':
+                return self.starts
+            else:
+                return self.stops
+        elif name=='durations':
             self.durations = (self.stops-self.starts).astype(float)
+            return self.durations
+        elif name=='durations_silences':
             self.durations_silences = (self.starts[1:]-self.stops[:-1]).astype(float)
+            return self.durations_silences
+        elif name=='n_avalanches':
             self.n_avalanches = len(self.starts)
+            return self.n_avalanches
         elif name=='size_events':
-            print("Hello!")
             from numpy import zeros
             self.size_events = zeros(self.n_avalanches)
             return self.size_events
-#            for i in range(self.n_avalanches):
-#                avalanche_stop = bisect_left(self.event_times, self.stops[i])
-#                avalanche_start = bisect_left(self.event_times, self.starts[i])
-#                self.size_events[i] = float(avalanche_stop-avalanche_start)
-#            return self.size_events
+            for i in range(self.n_avalanches):
+                avalanche_stop = bisect_left(self.event_times, self.stops[i])
+                avalanche_start = bisect_left(self.event_times, self.starts[i])
+                self.size_events[i] = float(avalanche_stop-avalanche_start)
+            return self.size_events
         elif name=='size_displacements':
             from numpy import zeros
             self.size_displacements = zeros(self.n_avalanches)
@@ -687,6 +708,7 @@ class Analysis(object):
                 avalanche_start = bisect_left(self.event_times, self.starts[i])
                 self.size_displacements[i] = sum(abs(\
                     self.event_displacements[avalanche_start:avalanche_stop]))
+            return self.size_displacements
         elif name=='size_amplitudes':
             from numpy import zeros
             self.size_amplitudes = zeros(self.n_avalanches)
@@ -695,6 +717,7 @@ class Analysis(object):
                 avalanche_start = bisect_left(self.event_times, self.starts[i])
                 self.size_amplitudes[i] = sum(abs(\
                     self.event_amplitudes[avalanche_start:avalanche_stop]))
+            return self.size_amplitudes
         elif name=='size_displacement_aucs':
             self.size_displacement_aucs = zeros(self.n_avalanches)
             for i in range(self.n_avalanches):
@@ -702,6 +725,7 @@ class Analysis(object):
                 avalanche_start = bisect_left(self.event_times, self.starts[i])
                 self.size_displacement_aucs[i] = sum(abs(\
                     self.event_displacement_aucs[avalanche_start:avalanche_stop]))
+            return self.size_displacement_aucs
         elif name=='size_amplitude_aucs':
             from numpy import zeros
             self.size_amplitude_aucs = zeros(self.n_avalanches)
@@ -710,7 +734,9 @@ class Analysis(object):
                 avalanche_start = bisect_left(self.event_times, self.starts[i])
                 self.size_amplitude_aucs[i] = sum(abs(\
                     self.event_amplitude_aucs[avalanche_start:avalanche_stop]))
+            return self.size_amplitude_aucs
         elif name=='sigma_events':
+            from numpy import zeros
             self.sigma_events = zeros(self.n_avalanches)
             for i in range(self.n_avalanches):
                 avalanche_stop = bisect_left(self.event_times, self.stops[i])
@@ -729,6 +755,7 @@ class Analysis(object):
                             +2*self.time_scale)\
                             )
                     self.sigma_events[i] = (second_bin-first_bin) / (first_bin-avalanche_start)
+            return self.sigma_events
         elif name=='sigma_displacements':
             from numpy import zeros
             self.sigma_displacements = zeros(self.n_avalanches)
@@ -751,6 +778,7 @@ class Analysis(object):
                     self.sigma_displacements[i] = \
                         sum(abs(self.event_displacements[first_bin:second_bin]))/  \
                         sum(abs(self.event_displacements[avalanche_start:first_bin]))
+            return self.sigma_displacements
         elif name=='sigma_amplitudes':
             from numpy import zeros
             self.sigma_amplitudes = zeros(self.n_avalanches)
@@ -773,6 +801,30 @@ class Analysis(object):
                     self.sigma_amplitudes[i] = \
                         sum(abs(self.event_amplitudes[first_bin:second_bin]))/  \
                         sum(abs(self.event_amplitudes[avalanche_start:first_bin]))
+            return self.sigma_amplitudes
+        elif name=='sigma_displacement_aucs':
+            from numpy import zeros
+            self.sigma_displacement_aucs = zeros(self.n_avalanches)
+            for i in range(self.n_avalanches):
+                avalanche_stop = bisect_left(self.event_times, self.stops[i])
+                avalanche_start = bisect_left(self.event_times, self.starts[i])
+                if self.durations[i] < (2*self.time_scale):
+                    self.sigma_events[i] = 0
+                else:
+                    first_bin = bisect_left( \
+                            self.event_times, \
+                            (self.starts[i] \
+                            +self.time_scale)\
+                            )
+                    second_bin = bisect_left( \
+                            self.event_times, \
+                            (self.starts[i] \
+                            +2*self.time_scale)\
+                            )
+                    self.sigma_displacement_aucs[i] = \
+                        sum(abs(self.event_displacement_aucs[first_bin:second_bin]))/  \
+                        sum(abs(self.event_displacement_aucs[avalanche_start:first_bin]))
+            return self.sigma_displacement_aucs
         elif name=='sigma_amplitude_aucs':
             from numpy import zeros
             self.sigma_amplitude_aucs = zeros(self.n_avalanches)
@@ -795,6 +847,7 @@ class Analysis(object):
                     self.sigma_amplitude_aucs[i] = \
                         sum(abs(self.event_amplitude_aucs[first_bin:second_bin]))/  \
                         sum(abs(self.event_amplitude_aucs[avalanche_start:first_bin]))
+            return self.sigma_amplitude_aucs
         elif name=='event_times_within_avalanche':
             from numpy import zeros
             self.event_times_within_avalanche = zeros(self.n_events)
@@ -810,6 +863,7 @@ class Analysis(object):
                 latest_event = previous_event+n_events_covered
                 self.event_times_within_avalanche[previous_event:latest_event] = etwa
                 previous_event = latest_event
+            return self.event_times_within_avalanche
         elif name=='t_ratio_displacements':
             from numpy import zeros
             self.t_ratio_displacements = zeros(self.n_events)
@@ -827,6 +881,7 @@ class Analysis(object):
                 latest_event = previous_event+n_events_covered
                 self.t_ratio_displacements[previous_event:latest_event] = t
                 previous_event = latest_event
+            return self.t_ratio_displacements
         elif name=='t_ratio_amplitudes':
             from numpy import zeros
             self.t_ratio_amplitudes = zeros(self.n_events)
@@ -844,6 +899,7 @@ class Analysis(object):
                 latest_event = previous_event+n_events_covered
                 self.t_ratio_amplitudes[previous_event:latest_event] = t
                 previous_event = latest_event
+            return self.t_ratio_amplitudes
         elif name=='t_ratio_displacement_aucs':
             from numpy import zeros
             self.t_ratio_displacement_aucs = zeros(self.n_events)
@@ -861,6 +917,7 @@ class Analysis(object):
                 latest_event = previous_event+n_events_covered
                 self.t_ratio_displacement_aucs[previous_event:latest_event] = t
                 previous_event = latest_event
+            return self.t_ratio_displacement_aucs
         elif name=='t_ratio_amplitude_aucs':
             from numpy import zeros
             self.t_ratio_amplitude_aucs = zeros(self.n_events)
@@ -878,6 +935,8 @@ class Analysis(object):
                 latest_event = previous_event+n_events_covered
                 self.t_ratio_amplitude_aucs[previous_event:latest_event] = t
                 previous_event = latest_event
+            return self.t_ratio_amplitude_aucs
+        else:  raise AttributeError, name
 
     def write_to_HDF5(self, file):
         print("Not really implemented yet. Might sort of work, though.")
@@ -903,74 +962,84 @@ class Analysis(object):
                     results_subgroup.create_dataset(k, data=array([0]))
         return
     
-    def write_to_database(self, session, filter_id):
+    def write_to_database(self, session, filter_id, write_events=True, write_avalanches=True, write_thresholds=True, write_analysis=True):
         import database as db
-        from numpy import zeros, median, mode
-        threshold_ids = zeros(self.signal.shape[0])
-        for i in range(self.signal.shape[0]):
-            t = db.Threshold(filter_id=filter_id)
-            t.signal = self.event_signal
-            t.mode = self.threshold_mode
-            t.level = self.threshold_level
-            t.up = self.thresholds_up[i]
-            t.down = self.thresholds_up[i]
-            t.mean = self.signal[i].mean()
-            t.channel = i
-            session.add(t)
+        from numpy import zeros, median
+        if write_avalanches and not write_analysis:
+            print("Need to write avalanche analysis in order to write individual avalanches, as we need the id of the analysis in the database.")
+            return
+        if write_thresholds:
+            threshold_ids = zeros(self.signal.shape[0])
+            print("Writing thresholds")
+            for i in range(self.signal.shape[0]):
+                t = db.Threshold(filter_id=filter_id)
+                t.signal = self.event_signal
+                t.mode = self.threshold_mode
+                t.level = self.threshold_level
+                t.up = self.thresholds_up[i]
+                t.down = self.thresholds_up[i]
+                t.mean = self.signal[i].mean()
+                t.channel = i
+                session.add(t)
+                session.commit()
+                threshold_ids[i] = t.id
+        if write_events:
+            print("Writing events")
+            for i in range(self.n_events):
+                e = db.Event()
+                e.time = self.event_times[i]
+                e.displacement = self.event_displacements[i]
+                e.amplitude = self.event_amplitudes[i]
+                e.amplitude_auc = self.event_amplitude_aucs[i]
+                e.displacement_auc = self.event_displacement_aucs[i]
+                if i==0:
+                    e.interval = 0
+                else:
+                    e.interval = self.interevent_intervals[i-1]
+                e.detection = self.event_detection
+                e.direction = self.threshold_direction
+                e.threshold_id = threshold_ids[self.event_channels[i]]
+                session.add(e)
             session.commit()
-            threshold_ids[i] = t.id
-        for i in range(self.n_events):
-            e = db.Event()
-            e.time = self.event_times[i]
-            e.displacement = self.event_displacements[i]
-            e.amplitude = self.event_amplitudes[i]
-            e.amplitude_auc = self.event_amplitude_aucs[i]
-            e.displacement_auc = self.event_displacement_aucs[i]
-            if i==0:
-                e.interval = 0
-            else:
-                e.interval = self.interevent_intervals[i-1]
-            e.detection = self.event_detection
-            e.direction = self.threshold_direction
-            e.threshold_id = threshold_ids[self.event_channels[i]]
-            session.add(e)
+        if write_analysis:
+            print("Writing avalanche analysis")
+            from scipy.stats import mode
+            analysis = db.AvalancheAnalysis(filter_id=filter_id)
+            analysis.spatial_sample = self.spatial_sample_name
+            analysis.temporal_sample = self.temporal_sample_name
+            analysis.threshold_mode = self.threshold_mode
+            analysis.threshold_level = self.threshold_level
+            analysis.threshold_direction = self.threshold_direction
+            analysis.time_scale = self.time_scale
+            analysis.event_signal = self.event_signal
+            analysis.event_detection = self.event_detection
+            analysis.cascade_method = self.cascade_method
+            analysis.n_avalanches = self.n_avalanches
+            analysis.interevent_intervals_mean = self.interevent_intervals.mean()
+            analysis.interevent_intervals_median = median(self.interevent_intervals)
+            analysis.interevent_intervals_mode = mode(self.interevent_intervals)[0][0]
+            analysis.sigma_events = self.sigma_events.mean()
+            analysis.sigma_displacements = self.sigma_displacements.mean()
+            analysis.sigma_amplitudes = self.sigma_amplitudes.mean()
+            analysis.sigma_amplitude_aucs = self.sigma_amplitude_aucs.mean()
+            session.add(analysis)
             session.commit()
-
-        analysis = db.AvalancheAnalysis(filter_id=filter_id)
-        analysis.spatial_sample = self.spatial_sample_name
-        analysis.temporal_sample = self.temporal_sample_name
-        analysis.threshold_mode = self.threshold_mode
-        analysis.threshold_level = self.threshold_level
-        analysis.threshold_direction = self.threshold_direction
-        analysis.time_scale = self.time_scales
-        analysis.event_signal = self.event_signal
-        analysis.event_detection = self.event_detection
-        analysis.cascade_method = self.cascade_method
-        analysis.n_avalanches = self.n_avalanches
-        analysis.interevent_intervals_mean = self.interevent_intervals.mean()
-        analysis.interevent_intervals_median = median(self.interevent_intervals)
-        analysis.interevent_intervals_mode = mode(self.interevent_intervals)
-        analysis.sigma_events = self.sigma_events.mean()
-        analysis.sigma_displacements = self.sigma_displacements.mean()
-        analysis.sigma_amplitudes = self.sigma_amplitudes.mean()
-        analysis.sigma_amplitude_aucs = self.sigma_amplitude_aucs.mean()
-        session.add(analysis)
-        session.commit()
-        analysis_id = analysis.id
-
-        for i in range(self.n_avalanches):
-            a = db.Avalanche(analysis_id=analysis_id)
-            a.duration = self.durations[i]
-            a.size_events = self.size_events[i]
-            a.size_displacements = self.size_displacements[i]
-            a.size_amplitudes = self.size_amplitudes[i]
-            a.size_amplitude_aucs = self.size_amplitude_aucs[i]
-            a.sigma_events = self.sigma_events[i]
-            a.sigma_displacements = self.sigma_displacements[i]
-            a.sigma_amplitudes = self.sigma_amplitudes[i]
-            a.sigma_displacement_aucs = self.sigma_displacement_aucs[i]
-            a.sigma_amplitude_aucs = self.sigma_amplitude_aucs[i]
-            session.add(a)
+            analysis_id = analysis.id
+        if write_avalanches:
+            print("Writing avalanches")
+            for i in range(self.n_avalanches):
+                a = db.Avalanche(analysis_id=analysis_id)
+                a.duration = self.durations[i]
+                a.size_events = self.size_events[i]
+                a.size_displacements = self.size_displacements[i]
+                a.size_amplitudes = self.size_amplitudes[i]
+                a.size_amplitude_aucs = self.size_amplitude_aucs[i]
+                a.sigma_events = self.sigma_events[i]
+                a.sigma_displacements = self.sigma_displacements[i]
+                a.sigma_amplitudes = self.sigma_amplitudes[i]
+                a.sigma_displacement_aucs = self.sigma_displacement_aucs[i]
+                a.sigma_amplitude_aucs = self.sigma_amplitude_aucs[i]
+                session.add(a)
             session.commit()
         return
 

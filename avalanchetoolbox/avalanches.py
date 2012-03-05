@@ -694,7 +694,6 @@ class Analysis(object):
         elif name=='size_events':
             from numpy import zeros
             self.size_events = zeros(self.n_avalanches)
-            return self.size_events
             for i in range(self.n_avalanches):
                 avalanche_stop = bisect_left(self.event_times, self.stops[i])
                 avalanche_start = bisect_left(self.event_times, self.starts[i])

@@ -552,8 +552,437 @@ def avalanche_metrics(input_metrics, avalanche_number):
             )
     return output_metrics
 
+class Analysis(object):
+
+    def __init__(self, data,**kwargs):
+        self.event_signal = 'displacement'
+        self.event_detection = 'local_extrema'
+        self.threshold_mode = 'SD'
+        self.threshold_level = 3
+        self.threshold_direction = 'both'
+        self.time_scale = 'mean_iei'
+        self.cascade_method = 'grid'
+        self.spatial_sample = 'all'
+        self.spatial_sample_name = None
+        self.temporal_sample = 'all'
+        self.temporal_sample_name = None
+        self.HDF5_group=None
+
+        for i in kwargs.keys():
+            setattr(self, i, kwargs[i])
+
+        if self.time_scale=='mean_iei':
+            self.mean_iei = True
+        else:
+            self.mean_iei = False
+
+
+        #See if we've just been passed a reference to an HDF5 file. If so, load the relevant section.
+        try:
+            import h5py
+            if type(data)==unicode or type(data)==str:
+                self.data = h5py.File(data)[self.HDF5_group]
+        except ImportError:
+            self.data = data
+
+#If we don't have a name for the spatial or temporal samples, generate one
+        if not self.spatial_sample_name:
+            if self.spatial_sample=='all':
+                self.spatial_sample_name='all'
+            else:
+                self.spatial_sample_name = str(len(self.spatial_sample))
+        if not self.temporal_sample_name:
+            if self.temporal_sample=='all':
+                self.temporal_sample_name='all'
+            else:
+                self.temporal_sample_name = str(len(self.temporal_sample))
+
+#If we're reading from a HDF5 file, load what data is available
+        try:
+            if type(data)==h5py._hl.group.Group:
+                if 'displacement' in data:
+                    self.data_displacement = data['displacement'][:,:]
+                else:
+                    raise IOError("'When using an HDF5 input, need a dataset called 'displacement'")
+                if 'amplitude' in data:
+                    self.data_amplitude = data['amplitude'][:,:]
+                if 'displacement_aucs' in data:
+                    self.data_displacement_aucs = data['displacement_aucs'][:,:]
+                if 'amplitude_aucs' in data:
+                    self.data_amplitude_aucs = data['amplitude_aucs'][:,:]
+            else:
+                self.data_displacement = data
+        except ImportError:
+            self.data_displacement = data
+
+        if self.event_signal == 'amplitude':
+            self.signal = self.data_amplitude
+        elif self.event_signal == 'displacement':
+            self.signal = self.data_displacement
+        else:
+            print 'Please select a supported event detection method (amplitude or displacement)'
+
+    def __getattr__(self, name):
+        if name=='data_amplitude':
+            self.data_amplitude = fast_amplitude(self.data_displacement)
+            return self.data_amplitude
+        elif name=='data_displacement_aucs':
+            self.data_displacement_aucs = area_under_the_curve(self.data_displacement)
+            return self.data_displacement_aucs
+        elif name=='data_amplitude_aucs':
+            self.data_amplitude_aucs = area_under_the_curve(self.data_amplitude)
+            return self.data_amplitude_aucs
+        if name=='thresholds_up' or name=='thresholds_down':
+            self.thresholds_up, self.thresholds_down = find_thresholds(self.signal, self.threshold_mode, self.threshold_level, self.threshold_direction)
+            if name=='thresholds_up':
+                return self.thresholds_up
+            elif name=='thresholds_down':
+                return self.thresholds_down
+        elif name=='event_times' or name=='event_channels' or name=='interevent_intervals' or name=='n_events' or name=='iei':
+            m = find_events(self.signal, thresholds_up=self.thresholds_up, thresholds_down=self.thresholds_down,
+                event_detection=self.event_detection, spatial_sample=self.spatial_sample, temporal_sample=self.temporal_sample)
+            self.event_times = m['event_times']
+            self.event_channels = m['event_channels']
+            self.interevent_intervals = m['interevent_intervals']
+            self.iei = self.interevent_intervals 
+            self.n_events = len(self.event_times)
+
+            if self.time_scale=='mean_iei':
+                self.time_scale = round(m['interevent_intervals'].mean())
+                print("Time scale: %f time steps" % self.time_scale)
+                from numpy import isnan
+                if isnan(self.time_scale):
+                    if self.event_times.any():
+                        self.time_scale=1
+                        print("One event found, using time scale of 1 time step")
+        elif name=='event_displacements':
+            self.event_displacements = self.data_displacement[self.event_channels, self.event_times]
+            return self.event_displacements
+        elif name=='event_amplitudes':
+            self.event_amplitudes= self.data_amplitude[self.event_channels, self.event_times]
+        elif name=='event_displacement_aucs':
+            self.event_displacement_aucs = self.data_displacement_aucs[self.event_channels, self.event_times]
+        elif name=='event_amplitude_aucs':
+            self.event_amplitude_aucs = self.data_amplitude_aucs[self.event_channels, self.event_times]
+        elif name=='starts' or name=='stops' or 'durations' or 'durations_silences' or 'n_avalanches':
+            self.starts, self.stops = find_cascades(self.event_times, self.time_scale, self.cascade_method)
+            self.durations = (self.stops-self.starts).astype(float)
+            self.durations_silences = (self.starts[1:]-self.stops[:-1]).astype(float)
+            self.n_avalanches = len(self.starts)
+        elif name=='size_events':
+            print("Hello!")
+            from numpy import zeros
+            self.size_events = zeros(self.n_avalanches)
+            return self.size_events
+#            for i in range(self.n_avalanches):
+#                avalanche_stop = bisect_left(self.event_times, self.stops[i])
+#                avalanche_start = bisect_left(self.event_times, self.starts[i])
+#                self.size_events[i] = float(avalanche_stop-avalanche_start)
+#            return self.size_events
+        elif name=='size_displacements':
+            from numpy import zeros
+            self.size_displacements = zeros(self.n_avalanches)
+            for i in range(self.n_avalanches):
+                avalanche_stop = bisect_left(self.event_times, self.stops[i])
+                avalanche_start = bisect_left(self.event_times, self.starts[i])
+                self.size_displacements[i] = sum(abs(\
+                    self.event_displacements[avalanche_start:avalanche_stop]))
+        elif name=='size_amplitudes':
+            from numpy import zeros
+            self.size_amplitudes = zeros(self.n_avalanches)
+            for i in range(self.n_avalanches):
+                avalanche_stop = bisect_left(self.event_times, self.stops[i])
+                avalanche_start = bisect_left(self.event_times, self.starts[i])
+                self.size_amplitudes[i] = sum(abs(\
+                    self.event_amplitudes[avalanche_start:avalanche_stop]))
+        elif name=='size_displacement_aucs':
+            self.size_displacement_aucs = zeros(self.n_avalanches)
+            for i in range(self.n_avalanches):
+                avalanche_stop = bisect_left(self.event_times, self.stops[i])
+                avalanche_start = bisect_left(self.event_times, self.starts[i])
+                self.size_displacement_aucs[i] = sum(abs(\
+                    self.event_displacement_aucs[avalanche_start:avalanche_stop]))
+        elif name=='size_amplitude_aucs':
+            from numpy import zeros
+            self.size_amplitude_aucs = zeros(self.n_avalanches)
+            for i in range(self.n_avalanches):
+                avalanche_stop = bisect_left(self.event_times, self.stops[i])
+                avalanche_start = bisect_left(self.event_times, self.starts[i])
+                self.size_amplitude_aucs[i] = sum(abs(\
+                    self.event_amplitude_aucs[avalanche_start:avalanche_stop]))
+        elif name=='sigma_events':
+            self.sigma_events = zeros(self.n_avalanches)
+            for i in range(self.n_avalanches):
+                avalanche_stop = bisect_left(self.event_times, self.stops[i])
+                avalanche_start = bisect_left(self.event_times, self.starts[i])
+                if self.durations[i] < (2*self.time_scale):
+                    self.sigma_events[i] = 0
+                else:
+                    first_bin = bisect_left( \
+                            self.event_times, \
+                            (self.starts[i] \
+                            +self.time_scale)\
+                            )
+                    second_bin = bisect_left( \
+                            self.event_times, \
+                            (self.starts[i] \
+                            +2*self.time_scale)\
+                            )
+                    self.sigma_events[i] = (second_bin-first_bin) / (first_bin-avalanche_start)
+        elif name=='sigma_displacements':
+            from numpy import zeros
+            self.sigma_displacements = zeros(self.n_avalanches)
+            for i in range(self.n_avalanches):
+                avalanche_stop = bisect_left(self.event_times, self.stops[i])
+                avalanche_start = bisect_left(self.event_times, self.starts[i])
+                if self.durations[i] < (2*self.time_scale):
+                    self.sigma_events[i] = 0
+                else:
+                    first_bin = bisect_left( \
+                            self.event_times, \
+                            (self.starts[i] \
+                            +self.time_scale)\
+                            )
+                    second_bin = bisect_left( \
+                            self.event_times, \
+                            (self.starts[i] \
+                            +2*self.time_scale)\
+                            )
+                    self.sigma_displacements[i] = \
+                        sum(abs(self.event_displacements[first_bin:second_bin]))/  \
+                        sum(abs(self.event_displacements[avalanche_start:first_bin]))
+        elif name=='sigma_amplitudes':
+            from numpy import zeros
+            self.sigma_amplitudes = zeros(self.n_avalanches)
+            for i in range(self.n_avalanches):
+                avalanche_stop = bisect_left(self.event_times, self.stops[i])
+                avalanche_start = bisect_left(self.event_times, self.starts[i])
+                if self.durations[i] < (2*self.time_scale):
+                    self.sigma_events[i] = 0
+                else:
+                    first_bin = bisect_left( \
+                            self.event_times, \
+                            (self.starts[i] \
+                            +self.time_scale)\
+                            )
+                    second_bin = bisect_left( \
+                            self.event_times, \
+                            (self.starts[i] \
+                            +2*self.time_scale)\
+                            )
+                    self.sigma_amplitudes[i] = \
+                        sum(abs(self.event_amplitudes[first_bin:second_bin]))/  \
+                        sum(abs(self.event_amplitudes[avalanche_start:first_bin]))
+        elif name=='sigma_amplitude_aucs':
+            from numpy import zeros
+            self.sigma_amplitude_aucs = zeros(self.n_avalanches)
+            for i in range(self.n_avalanches):
+                avalanche_stop = bisect_left(self.event_times, self.stops[i])
+                avalanche_start = bisect_left(self.event_times, self.starts[i])
+                if self.durations[i] < (2*self.time_scale):
+                    self.sigma_events[i] = 0
+                else:
+                    first_bin = bisect_left( \
+                            self.event_times, \
+                            (self.starts[i] \
+                            +self.time_scale)\
+                            )
+                    second_bin = bisect_left( \
+                            self.event_times, \
+                            (self.starts[i] \
+                            +2*self.time_scale)\
+                            )
+                    self.sigma_amplitude_aucs[i] = \
+                        sum(abs(self.event_amplitude_aucs[first_bin:second_bin]))/  \
+                        sum(abs(self.event_amplitude_aucs[avalanche_start:first_bin]))
+        elif name=='event_times_within_avalanche':
+            from numpy import zeros
+            self.event_times_within_avalanche = zeros(self.n_events)
+            previous_event=0
+            for i in range(self.n_avalanches):
+                avalanche_stop = bisect_left(self.event_times, self.stops[i])
+                avalanche_start = bisect_left(self.event_times, self.starts[i])
+                etwa = (\
+                        self.event_times[avalanche_start:avalanche_stop] - \
+                        self.event_times[avalanche_start]
+                        )
+                n_events_covered = len(etwa)
+                latest_event = previous_event+n_events_covered
+                self.event_times_within_avalanche[previous_event:latest_event] = etwa
+                previous_event = latest_event
+        elif name=='t_ratio_displacements':
+            from numpy import zeros
+            self.t_ratio_displacements = zeros(self.n_events)
+            previous_event=0
+            for i in range(self.n_avalanches):
+                avalanche_stop = bisect_left(self.event_times, self.stops[i])
+                avalanche_start = bisect_left(self.event_times, self.starts[i])
+
+                initial_amplitude = self.event_displacements[avalanche_start].sum()
+                t = log2(\
+                        self.event_displacements[avalanche_start:avalanche_stop] / \
+                        initial_amplitude \
+                        )
+                n_events_covered = len(t)
+                latest_event = previous_event+n_events_covered
+                self.t_ratio_displacements[previous_event:latest_event] = t
+                previous_event = latest_event
+        elif name=='t_ratio_amplitudes':
+            from numpy import zeros
+            self.t_ratio_amplitudes = zeros(self.n_events)
+            previous_event=0
+            for i in range(self.n_avalanches):
+                avalanche_stop = bisect_left(self.event_times, self.stops[i])
+                avalanche_start = bisect_left(self.event_times, self.starts[i])
+
+                initial_amplitude = self.event_amplitudes[avalanche_start].sum()
+                t = log2(\
+                        self.event_amplitudes[avalanche_start:avalanche_stop] / \
+                        initial_amplitude \
+                        )
+                n_events_covered = len(t)
+                latest_event = previous_event+n_events_covered
+                self.t_ratio_amplitudes[previous_event:latest_event] = t
+                previous_event = latest_event
+        elif name=='t_ratio_displacement_aucs':
+            from numpy import zeros
+            self.t_ratio_displacement_aucs = zeros(self.n_events)
+            previous_event=0
+            for i in range(self.n_avalanches):
+                avalanche_stop = bisect_left(self.event_times, self.stops[i])
+                avalanche_start = bisect_left(self.event_times, self.starts[i])
+
+                initial_amplitude = self.event_displacement_aucs[avalanche_start].sum()
+                t = log2(\
+                        self.event_displacement_aucs[avalanche_start:avalanche_stop] / \
+                        initial_amplitude \
+                        )
+                n_events_covered = len(t)
+                latest_event = previous_event+n_events_covered
+                self.t_ratio_displacement_aucs[previous_event:latest_event] = t
+                previous_event = latest_event
+        elif name=='t_ratio_amplitude_aucs':
+            from numpy import zeros
+            self.t_ratio_amplitude_aucs = zeros(self.n_events)
+            previous_event=0
+            for i in range(self.n_avalanches):
+                avalanche_stop = bisect_left(self.event_times, self.stops[i])
+                avalanche_start = bisect_left(self.event_times, self.starts[i])
+
+                initial_amplitude = self.event_amplitude_aucs[avalanche_start].sum()
+                t = log2(\
+                        self.event_amplitude_aucs[avalanche_start:avalanche_stop] / \
+                        initial_amplitude \
+                        )
+                n_events_covered = len(t)
+                latest_event = previous_event+n_events_covered
+                self.t_ratio_amplitude_aucs[previous_event:latest_event] = t
+                previous_event = latest_event
+
+    def write_to_HDF5(self, file):
+        print("Not really implemented yet. Might sort of work, though.")
+        elements = list(file)
+        version = 'ts-'+str(self.time_scale)+'_m-'+self.threshold_mode+'_t-'+str(self.threshold_level)[2:]+'_e-'+self.event_signal + '_ed-'+self.event_detection +'_c-'+ self.cascade_method +'_s-'+self.spatial_sample_name+'_t-'+self.temporal_sample_name
+        if version in elements:
+            print 'Avalanche analysis has already been done on these data with these parameters!'
+            return
+        results_subgroup = file.create_group(version)
+        #Store parameters for this analysis (including some parameters formatted as strings)
+        #as attributes of this version. All the numerical results we store as new datasets in
+        #in this version group
+        attributes = ('time_scale', 'threshold_mode', 'threshold_level', 'event_signal',\
+                'cascade_method', 'spatial_sample', 'temporal_sample', 'n')
+        for k in attributes:
+            results_subgroup.attrs[k] = getattr(self, k)
+        metrics = self.__dict__
+        for k in metrics:
+            if k not in attributes:
+                if len(metrics[k])!=0:
+                    results_subgroup.create_dataset(k, data=metrics[k])
+                else:
+                    results_subgroup.create_dataset(k, data=array([0]))
+        return
+    
+    def write_to_database(self, session, filter_id):
+        import database as db
+        from numpy import zeros, median, mode
+        threshold_ids = zeros(self.signal.shape[0])
+        for i in range(self.signal.shape[0]):
+            t = db.Threshold(filter_id=filter_id)
+            t.signal = self.event_signal
+            t.mode = self.threshold_mode
+            t.level = self.threshold_level
+            t.up = self.thresholds_up[i]
+            t.down = self.thresholds_up[i]
+            t.mean = self.signal[i].mean()
+            t.channel = i
+            session.add(t)
+            session.commit()
+            threshold_ids[i] = t.id
+        for i in range(self.n_events):
+            e = db.Event()
+            e.time = self.event_times[i]
+            e.displacement = self.event_displacements[i]
+            e.amplitude = self.event_amplitudes[i]
+            e.amplitude_auc = self.event_amplitude_aucs[i]
+            e.displacement_auc = self.event_displacement_aucs[i]
+            if i==0:
+                e.interval = 0
+            else:
+                e.interval = self.interevent_intervals[i-1]
+            e.detection = self.event_detection
+            e.direction = self.threshold_direction
+            e.threshold_id = threshold_ids[self.event_channels[i]]
+            session.add(e)
+            session.commit()
+
+        analysis = db.AvalancheAnalysis(filter_id=filter_id)
+        analysis.spatial_sample = self.spatial_sample_name
+        analysis.temporal_sample = self.temporal_sample_name
+        analysis.threshold_mode = self.threshold_mode
+        analysis.threshold_level = self.threshold_level
+        analysis.threshold_direction = self.threshold_direction
+        analysis.time_scale = self.time_scales
+        analysis.event_signal = self.event_signal
+        analysis.event_detection = self.event_detection
+        analysis.cascade_method = self.cascade_method
+        analysis.n_avalanches = self.n_avalanches
+        analysis.interevent_intervals_mean = self.interevent_intervals.mean()
+        analysis.interevent_intervals_median = median(self.interevent_intervals)
+        analysis.interevent_intervals_mode = mode(self.interevent_intervals)
+        analysis.sigma_events = self.sigma_events.mean()
+        analysis.sigma_displacements = self.sigma_displacements.mean()
+        analysis.sigma_amplitudes = self.sigma_amplitudes.mean()
+        analysis.sigma_amplitude_aucs = self.sigma_amplitude_aucs.mean()
+        session.add(analysis)
+        session.commit()
+        analysis_id = analysis.id
+
+        for i in range(self.n_avalanches):
+            a = db.Avalanche(analysis_id=analysis_id)
+            a.duration = self.durations[i]
+            a.size_events = self.size_events[i]
+            a.size_displacements = self.size_displacements[i]
+            a.size_amplitudes = self.size_amplitudes[i]
+            a.size_amplitude_aucs = self.size_amplitude_aucs[i]
+            a.sigma_events = self.sigma_events[i]
+            a.sigma_displacements = self.sigma_displacements[i]
+            a.sigma_amplitudes = self.sigma_amplitudes[i]
+            a.sigma_displacement_aucs = self.sigma_displacement_aucs[i]
+            a.sigma_amplitude_aucs = self.sigma_amplitude_aucs[i]
+            session.add(a)
+            session.commit()
+        return
+
 def area_under_the_curve(data, baseline='mean'):
-    """area_under_the_curve is currently a mentally messy but computationally fast way to get an array of area under the curve information, to be used to assign to events. The area under the curve is the integral of the deflection from baseline (mean signal) in which an event occurrs. area_under_the_curve returns an array of the same size as the input data, where the datapoints are the areas of the curves the datapoints are contained in. So, all values located within curve N are the area of curve N, all values located within curve N+1 are the area of curve N+1, etc. Note that many curves go below baseline, so negative areas can be returned."""
+    """area_under_the_curve is currently a mentally messy but computationally fast way
+    to get an array of area under the curve information, to be used to assign to events.
+    The area under the curve is the integral of the deflection from baseline (mean signal)
+    in which an event occurrs. area_under_the_curve returns an array of the same size as
+    the input data, where the datapoints are the areas of the curves the datapoints are
+    contained in. So, all values located within curve N are the area of curve N, all
+    values located within curve N+1 are the area of curve N+1, etc. Note that many curves
+    go below baseline, so negative areas can be returned."""
     from numpy import cumsum, concatenate, zeros, empty, shape, repeat, diff, where, sign, ndarray
     n_rows, n_columns = data.shape
 

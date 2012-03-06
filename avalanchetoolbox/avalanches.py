@@ -1218,19 +1218,19 @@ def avalanche_statistics(metrics, \
 
                     statistics[k][distribution]={}
                     statistics[k][distribution]['parameter1_name']=parameter0
-                    statistics[k][distribution]['parameter1_value']=parameters[0]
+                    statistics[k][distribution]['parameter1']=parameters[0]
 
                     statistics[k][distribution]['parameter2_name']=parameter1
                     if parameter1:
-                        statistics[k][distribution]['parameter2_value']=parameters[1]
+                        statistics[k][distribution]['parameter2']=parameters[1]
                     else:
-                        statistics[k][distribution]['parameter2_value']=None
+                        statistics[k][distribution]['parameter2']=None
 
                     statistics[k][distribution]['parameter3_name']=parameter2
                     if parameter2:
-                        statistics[k][distribution]['parameter3_value']=parameters[2]
+                        statistics[k][distribution]['parameter3']=parameters[2]
                     else:
-                        statistics[k][distribution]['parameter3_value']=None
+                        statistics[k][distribution]['parameter3']=None
 
                     statistics[k][distribution]['fixed_xmin']=fixed_xmin
                     statistics[k][distribution]['xmin']=xmin

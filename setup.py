@@ -2,7 +2,7 @@ from distutils.core import setup
 setup(
         name = 'avalanchetoolbox',
         packages = ['avalanchetoolbox'],
-        version = '.3',
+        version = '.4',
         description = 'Toolbox for identifying and describing branching processes, such as neuronal avalanches',
         author='Jeff Alstott',
         author_email = 'jeffalstott@gmail.com',

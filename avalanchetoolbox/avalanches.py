@@ -296,10 +296,14 @@ def find_events(signal, thresholds_up=None, thresholds_down=None,\
 
     #Threshold mask
     if any(thresholds_up):
+        ind = [i for i in range(n_channels) if thresholds_up[i] is None]
+        thresholds_up[ind] = float('inf')
         up_mask = transpose(transpose(signal)>=thresholds_up)*1
     else:
         up_mask = zeros((n_channels, n_time_points))
     if any(thresholds_down):
+        ind = [i for i in range(n_channels) if thresholds_down[i] is None]
+        thresholds_down[ind] = -float('inf')
         down_mask = transpose(transpose(signal)<=thresholds_down)*1
     else:
         down_mask = zeros((n_channels, n_time_points))
@@ -567,6 +571,7 @@ class Analysis(object):
         self.temporal_sample = 'all'
         self.temporal_sample_name = None
         self.HDF5_group=None
+        self.fit_method = 'Likelihood'
 
         for i in kwargs.keys():
             setattr(self, i, kwargs[i])
@@ -622,25 +627,75 @@ class Analysis(object):
         else:
             print 'Please select a supported event detection method (amplitude or displacement)'
 
+    def __setattr__(self, name, value):
+        if name.endswith('_fit') and (type(value)==tuple or type(value)==list):
+            measure = name[:-4]
+            if len(value)==4:
+                xmin, xmax, discrete, method = value
+            else:
+                xmin, xmax, discrete = value
+                method = self.fit_method
+            try:
+                import powerlaw
+                setattr(self, name, powerlaw.Fit(getattr(self,measure), discrete=discrete, xmin=xmin, xmax=xmax, method=method))
+                return
+            except ImportError:
+                print("Must have the package 'powerlaw' installed! Install with 'easy_install powerlaw' or 'pip powerlaw'. ")
+                return
+        else:
+            object.__setattr__(self, name, value)
+
     def __getattr__(self, name):
-        if name=='data_amplitude':
+        if name.endswith('_fit'):
+            measure = name[:-4]
+            try:
+                if measure in ['size_events', 'durations', 'durations_silences', 'event_times_within_avalanche'\
+                        'iei', 'interevent_intervals']:
+                    discrete=True
+                else:
+                    discrete=False
+                if measure in ['size_events']:
+                    xmin = 1
+                    xmax = self.n_channels
+                else:
+                    xmin=None
+                    xmax=None
+                setattr(self, name, (xmin, xmax, discrete, self.fit_method))
+                return getattr(self,name)
+            except ImportError:
+                print("Must have the package 'powerlaw' installed! Install with 'easy_install powerlaw' or 'pip powerlaw'. ")
+                return
+
+        elif name=='data_amplitude':
+            print("Calculating amplitudes")
             self.data_amplitude = fast_amplitude(self.data_displacement)
             return self.data_amplitude
         elif name=='data_displacement_aucs':
+            print("Calculating areas under the curve")
             self.data_displacement_aucs = area_under_the_curve(self.data_displacement)
             return self.data_displacement_aucs
         elif name=='data_amplitude_aucs':
+            print("Calculating areas under the curve")
             self.data_amplitude_aucs = area_under_the_curve(self.data_amplitude)
             return self.data_amplitude_aucs
         elif name=='thresholds_up' or name=='thresholds_down':
-            self.thresholds_up, self.thresholds_down = find_thresholds(self.signal, self.threshold_mode, self.threshold_level, self.threshold_direction)
+            print("Calculating thresholds")
+            self.thresholds_up, self.thresholds_down = find_thresholds(self.signal, self.threshold_mode, self.threshold_level, 'both')
             if name=='thresholds_up':
                 return self.thresholds_up
             else:
                 return self.thresholds_down
         elif name=='event_times' or name=='event_channels' or name=='interevent_intervals':
-            m = find_events(self.signal, thresholds_up=self.thresholds_up, thresholds_down=self.thresholds_down,
-                event_detection=self.event_detection, spatial_sample=self.spatial_sample, temporal_sample=self.temporal_sample)
+            print("Finding events")
+            if self.threshold_direction=='down':
+                m = find_events(self.signal, thresholds_up=None, thresholds_down=self.thresholds_down,
+                    event_detection=self.event_detection, spatial_sample=self.spatial_sample, temporal_sample=self.temporal_sample)
+            elif self.threshold_direction=='up':
+                m = find_events(self.signal, thresholds_up=self.thresholds_down, thresholds_down=None,
+                    event_detection=self.event_detection, spatial_sample=self.spatial_sample, temporal_sample=self.temporal_sample)
+            else:
+                m = find_events(self.signal, thresholds_up=self.thresholds_down, thresholds_down=self.thresholds_down,
+                    event_detection=self.event_detection, spatial_sample=self.spatial_sample, temporal_sample=self.temporal_sample)
             self.event_times = m['event_times']
             self.event_channels = m['event_channels']
             self.interevent_intervals = m['interevent_intervals']
@@ -664,6 +719,10 @@ class Analysis(object):
         elif name=='n_events':
             self.n_events = len(self.event_times)
             return self.n_events
+        elif name=='n_channels':
+            from numpy import unique
+            self.n_channels = len(unique(self.event_channels))
+            return self.n_channels
         elif name=='event_displacements':
             self.event_displacements = self.data_displacement[self.event_channels, self.event_times]
             return self.event_displacements
@@ -718,6 +777,7 @@ class Analysis(object):
                     self.event_amplitudes[avalanche_start:avalanche_stop]))
             return self.size_amplitudes
         elif name=='size_displacement_aucs':
+            from numpy import zeros
             self.size_displacement_aucs = zeros(self.n_avalanches)
             for i in range(self.n_avalanches):
                 avalanche_stop = bisect_left(self.event_times, self.stops[i])
@@ -961,8 +1021,8 @@ class Analysis(object):
                     results_subgroup.create_dataset(k, data=array([0]))
         return
     
-    def write_to_database(self, session, filter_id, write_events=True, write_avalanches=True, write_thresholds=True, write_analysis=True):
-        import database as db
+    def write_to_database(self, session, filter_id, write_events=True, write_avalanches=True, write_thresholds=True, write_analysis=True, write_fits=True):
+        from avalanchetoolbox import database as db
         from numpy import zeros, median
         if write_avalanches and not write_analysis:
             print("Need to write avalanche analysis in order to write individual avalanches, as we need the id of the analysis in the database.")
@@ -976,9 +1036,14 @@ class Analysis(object):
                 t.mode = self.threshold_mode
                 t.level = self.threshold_level
                 t.up = self.thresholds_up[i]
-                t.down = self.thresholds_up[i]
+                t.down = self.thresholds_down[i]
                 t.mean = self.signal[i].mean()
                 t.channel = i
+                for value in vars(t).keys():
+                    if getattr(t,value)==float('inf'):
+                        setattr(t,value, None)
+                    elif getattr(t,value)==-float('inf'):
+                        setattr(t,value, None)
                 session.add(t)
                 session.commit()
                 threshold_ids[i] = t.id
@@ -998,6 +1063,11 @@ class Analysis(object):
                 e.detection = self.event_detection
                 e.direction = self.threshold_direction
                 e.threshold_id = threshold_ids[self.event_channels[i]]
+                for value in vars(e).keys():
+                    if getattr(e,value)==float('inf'):
+                        setattr(e,value, None)
+                    elif getattr(e,value)==-float('inf'):
+                        setattr(e,value, None)
                 session.add(e)
             session.commit()
         if write_analysis:
@@ -1021,6 +1091,12 @@ class Analysis(object):
             analysis.sigma_displacements = self.sigma_displacements.mean()
             analysis.sigma_amplitudes = self.sigma_amplitudes.mean()
             analysis.sigma_amplitude_aucs = self.sigma_amplitude_aucs.mean()
+            analysis.fits = []
+            for value in vars(analysis).keys():
+                if getattr(analysis,value)==float('inf'):
+                    setattr(analysis,value, None)
+                elif getattr(analysis,value)==-float('inf'):
+                    setattr(analysis,value, None)
             session.add(analysis)
             session.commit()
             analysis_id = analysis.id
@@ -1038,7 +1114,83 @@ class Analysis(object):
                 a.sigma_amplitudes = self.sigma_amplitudes[i]
                 a.sigma_displacement_aucs = self.sigma_displacement_aucs[i]
                 a.sigma_amplitude_aucs = self.sigma_amplitude_aucs[i]
+                for value in vars(a).keys():
+                    if getattr(a,value)==float('inf'):
+                        setattr(a,value, None)
+                    elif getattr(a,value)==-float('inf'):
+                        setattr(a,value, None)
                 session.add(a)
+            session.commit()
+        if write_fits:
+            print("Writing fits")
+            from avalanchetoolbox import database as db
+            try:
+                import powerlaw
+            except ImportError:
+                print("Must have the package 'powerlaw' installed! Install with 'easy_install powerlaw' or 'pip powerlaw'. ")
+                return
+
+            measures_to_fit = ['size_events', 'size_amplitudes', 'size_displacements',\
+                    'size_displacement_aucs', 'size_amplitude_aucs', 'durations',\
+                    'durations_silences', 'interevent_intervals', 'event_amplitudes',\
+                    'event_amplitude_aucs']
+
+            size_events_counter =0
+            for i in measures_to_fit:
+                fit = getattr(self, i+'_fit')
+
+                if i=='size_events':
+                    #Here we try out multiple fit parameters for size_events. First (size_events_counter==0), the default fit of (1, n_channels, True).
+                    #Then from 1 without an xmax, then without a predefined xmin.
+                    if size_events_counter==1:
+                        self.size_events_fit = (1, None, True)
+                        fit = self.size_events_fit
+                    if size_events_counter==2:
+                        self.size_events_fit = (None, None, True)
+                        fit = self.size_events_fit
+                size_events_counter +=1
+
+
+                for j in fit.supported_distributions:
+                    f = db.Fit()
+                    f.method = fit.method
+                    f.n_tail = fit.n_tail
+                    f.noise_flag = fit.noise_flag
+                    f.discrete = fit.discrete
+                    f.fixed_xmin = fit.fixed_xmin
+                    f.xmin = fit.xmin
+                    f.fixed_xmax = fit.fixed_xmax
+                    f.xmax = fit.xmax
+                    f.analysis_id = analysis_id
+
+                    f.distribution = getattr(fit, j).name
+                    f.parameter1_name = getattr(fit, j).parameter1_name
+                    f.parameter1 = getattr(fit, j).parameter1
+                    f.parameter2_name = getattr(fit, j).parameter2_name
+                    f.parameter2 = getattr(fit, j).parameter2
+                    f.parameter3_name = getattr(fit, j).parameter3_name
+                    f.parameter3 = getattr(fit, j).parameter3
+                    f.loglikelihood = getattr(fit, j).loglikelihood
+
+                    LLR, p = fit.loglikelihood_ratio('power_law', j)
+                    f.power_law_loglikelihood_ratio = LLR
+                    f.power_law_p = p
+                    LLR, p = fit.loglikelihood_ratio('truncated_power_law', j)
+                    f.truncated_power_law_loglikelihood_ratio = LLR
+                    f.power_law_p = p
+                    f.D = getattr(fit, j).D
+
+                    if j=='power_law':
+                        f.D_plus_critical_branching, f.D_minus_critical_branching, f.Kappa =\
+                                powerlaw.power_law_ks_distance(getattr(self, i),\
+                                1.5, xmin=fit.xmin, xmax=fit.xmax, discrete=fit.discrete, kuiper=True)
+                    for value in vars(f).keys():
+                        if getattr(f,value)==float('inf'):
+                            setattr(f,value, None)
+                        elif getattr(f,value)==-float('inf'):
+                            setattr(f,value, None)
+                    analysis.fits.append(f)
+            session.add(analysis)
             session.commit()
         return
 
@@ -1049,8 +1201,8 @@ def area_under_the_curve(data, baseline='mean'):
     in which an event occurrs. area_under_the_curve returns an array of the same size as
     the input data, where the datapoints are the areas of the curves the datapoints are
     contained in. So, all values located within curve N are the area of curve N, all
-    values located within curve N+1 are the area of curve N+1, etc. Note that many curves
-    go below baseline, so negative areas can be returned."""
+    values located within curve N+1 are the area of curve N+1, etc. Note that this is the
+    area under the curves, so all results are positive numbers."""
     from numpy import cumsum, concatenate, zeros, empty, shape, repeat, diff, where, sign, ndarray
     n_rows, n_columns = data.shape
 
@@ -1085,7 +1237,7 @@ def area_under_the_curve(data, baseline='mean'):
         durations = stops_in_row-previous_stops
         data_aucs[i] = repeat(values, durations)
 
-    return data_aucs
+    return abs(data_aucs)
 
 def avalanche_statistics(metrics, \
         given_xmin_xmax=[(None,None)],\
@@ -1106,7 +1258,7 @@ def avalanche_statistics(metrics, \
         close_session_at_end=True
 
     if session:
-        import database as db
+        from avalanchetoolbox import database as db
         avalanche_analysis = session.query(db.Avalanche).filter_by(\
                 id=analysis_id).first()
 
@@ -1307,7 +1459,7 @@ def run_analyses(data,\
         engine = create_engine(database_url, echo=False)
         session = Session(engine)
     if session:
-        import database as db
+        from avalanchetoolbox import database as db
         from sqlalchemy import and_
 
     if not session:
@@ -1450,7 +1602,7 @@ def run_analyses(data,\
                 "    HDF5_group=%r)\n\n" % HDF5_group])
 
             analysis_file.writelines(["if not analysis_id:\n",
-                "    import database as db\n",
+                "    from avalanchetoolbox import database as db\n",
                 "    analysis = db.Avalanche(\\\n",
                 "        filter_id=%s,\\\n" % filter_id,
                 "        spatial_sample=%r, temporal_sample=%r,\\\n" % (sn, tn),

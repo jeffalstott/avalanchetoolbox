@@ -366,10 +366,10 @@ def find_events(signal, thresholds_up=None, thresholds_down=None,\
                         excursion_starts = excursion_starts[0:-1]
                     for e in range(len(excursion_starts)):
                         if n_channels==1:
-                            event_time = signal[excursion_starts[e]:excursion_stops[e]].argmax()
+                            event_time = signal[excursion_starts[e]:excursion_stops[e]].argmin()
                             down_event_mask[event_time+excursion_starts[e]] = 1
                         else:
-                            event_time = signal[channel, excursion_starts[e]:excursion_stops[e]].argmax()
+                            event_time = signal[channel, excursion_starts[e]:excursion_stops[e]].argmin()
                             down_event_mask[channel, event_time+excursion_starts[e]] = 1
 
             event_mask = down_event_mask+up_event_mask

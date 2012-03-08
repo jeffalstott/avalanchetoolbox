@@ -694,13 +694,16 @@ class Analysis(object):
                 m = find_events(self.signal, thresholds_up=self.thresholds_down, thresholds_down=None,
                     event_detection=self.event_detection, spatial_sample=self.spatial_sample, temporal_sample=self.temporal_sample)
             else:
-                m = find_events(self.signal, thresholds_up=self.thresholds_down, thresholds_down=self.thresholds_down,
+                m = find_events(self.signal, thresholds_up=self.thresholds_up, thresholds_down=self.thresholds_down,
                     event_detection=self.event_detection, spatial_sample=self.spatial_sample, temporal_sample=self.temporal_sample)
             self.event_times = m['event_times']
             self.event_channels = m['event_channels']
             self.interevent_intervals = m['interevent_intervals']
             if self.time_scale=='mean_iei':
                 self.time_scale = round(self.interevent_intervals.mean())
+                if self.time_scale == 0:
+                    print("Mean interevent interval is below .5, and would round to 0. Using 1 instead.")
+                    self.time_scale == 1.0
                 print("Time scale: %f time steps" % self.time_scale)
                 from numpy import isnan
                 if isnan(self.time_scale):

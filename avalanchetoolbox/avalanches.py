@@ -572,6 +572,7 @@ class Analysis(object):
         self.temporal_sample_name = None
         self.HDF5_group=None
         self.fit_method = 'Likelihood'
+        self.n_time_points = data.shape[1]
 
         for i in kwargs.keys():
             setattr(self, i, kwargs[i])
@@ -818,6 +819,9 @@ class Analysis(object):
                             )
                     self.sigma_events[i] = (second_bin-first_bin) / (first_bin-avalanche_start)
             return self.sigma_events
+        elif name=='sigma_events_expected':
+            self.sigma_events_expected = 1 - (1 -(self.n_events/(self.n_channels*self.n_time_points)))**(self.n_channels*self.time_scale)
+            return self.sigma_events_expected
         elif name=='sigma_displacements':
             from numpy import zeros
             self.sigma_displacements = zeros(self.n_avalanches)
@@ -1091,6 +1095,7 @@ class Analysis(object):
             analysis.interevent_intervals_median = median(self.interevent_intervals)
             analysis.interevent_intervals_mode = mode(self.interevent_intervals)[0][0]
             analysis.sigma_events = self.sigma_events.mean()
+            analysis.sigma_events_expected = self.sigma_events_expected
             analysis.sigma_displacements = self.sigma_displacements.mean()
             analysis.sigma_amplitudes = self.sigma_amplitudes.mean()
             analysis.sigma_amplitude_aucs = self.sigma_amplitude_aucs.mean()

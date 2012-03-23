@@ -209,6 +209,7 @@ class AvalancheAnalysis(HasFits,Base):
     interevent_intervals_mode = Column(Float)
 
     sigma_events = Column(Float)
+    sigma_events_expected = Column(Float)
     sigma_displacements = Column(Float)
     sigma_amplitudes = Column(Float)
     sigma_amplitude_aucs = Column(Float)

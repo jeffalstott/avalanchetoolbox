@@ -114,7 +114,7 @@ def run_analysis(data,\
     metrics['starts'] = starts
     metrics['stops'] = stops
     metrics['durations'] = (stops-starts).astype(float)
-    metrics['durations_silences'] = (starts[1:]-stops[:-1]).astype(float)
+    metrics['interavalanche_intervals'] = (starts[1:]-stops[:-1]).astype(float)
     metrics['n'] = len(starts)
 
     #For every avalanche, calculate some list of metrics, then save those metrics in a dictionary
@@ -650,7 +650,7 @@ class Analysis(object):
         if name.endswith('_fit'):
             measure = name[:-4]
             try:
-                if measure in ['size_events', 'durations', 'durations_silences', 'event_times_within_avalanche'\
+                if measure in ['size_events', 'durations', 'interavalanche_intervals', 'event_times_within_avalanche'\
                         'iei', 'interevent_intervals']:
                     discrete=True
                 else:
@@ -664,7 +664,7 @@ class Analysis(object):
                 setattr(self, name, (xmin, xmax, discrete, self.fit_method))
                 return getattr(self,name)
             except ImportError:
-                print("Must have the package 'powerlaw' installed! Install with 'easy_install powerlaw' or 'pip powerlaw'. ")
+                print("Must have the package 'powerlaw' installed! Install with 'easy_install powerlaw' or 'pip powerlaw'.")
                 return
 
         elif name=='data_amplitude':
@@ -748,9 +748,9 @@ class Analysis(object):
         elif name=='durations':
             self.durations = (self.stops-self.starts).astype(float)
             return self.durations
-        elif name=='durations_silences':
-            self.durations_silences = (self.starts[1:]-self.stops[:-1]).astype(float)
-            return self.durations_silences
+        elif name=='interavalanche_intervals':
+            self.interavalanche_intervals = (self.starts[1:]-self.stops[:-1]).astype(float)
+            return self.interavalanche_intervals
         elif name=='n_avalanches':
             self.n_avalanches = len(self.starts)
             return self.n_avalanches
@@ -1113,6 +1113,11 @@ class Analysis(object):
             for i in range(self.n_avalanches):
                 a = db.Avalanche(analysis_id=analysis_id)
                 a.duration = self.durations[i]
+                a.duration = self.durations[i]
+                if i==0:
+                    a.interval = 0
+                else:
+                    a.interval = self.interavalanche_intervals[i-1]
                 a.size_events = self.size_events[i]
                 a.size_displacements = self.size_displacements[i]
                 a.size_amplitudes = self.size_amplitudes[i]
@@ -1140,7 +1145,7 @@ class Analysis(object):
 
             measures_to_fit = ['size_events', 'size_amplitudes', 'size_displacements',\
                     'size_displacement_aucs', 'size_amplitude_aucs', 'durations',\
-                    'durations_silences', 'interevent_intervals', 'event_amplitudes',\
+                    'interavalanche_intervals', 'interevent_intervals', 'event_amplitudes',\
                     'event_amplitude_aucs']
 
             size_events_counter =0

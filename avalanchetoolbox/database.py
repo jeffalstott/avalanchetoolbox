@@ -266,6 +266,7 @@ class Fit(Base):
 
 class Avalanche(Base):
     duration = Column(Integer)
+    interval = Column(Integer)
     size_events = Column(Integer)
     size_displacements = Column(Float)
     size_amplitudes = Column(Float)

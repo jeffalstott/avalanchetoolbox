@@ -1207,6 +1207,64 @@ class Analysis(object):
             session.commit()
         return
 
+class Analyses(object):
+    def __init__(self, database_url, verbose=False, **kwargs):
+        self.database_url = database_url
+        self.verbose = verbose
+
+        self.event_signals = ['displacement',]
+        self.event_detections = ['local_extrema',]
+        self.threshold_mode = 'Likelihood'
+        self.threshold_levels = [2, 5, 10]
+        self.threshold_directions = ['both',]
+        self.time_scales = ['mean_iei',]
+        self.cascade_methods = ['grid',]
+        self.spatial_samples= [('all', 'all'),]
+        self.temporal_samples = [('all', 'all'),]
+
+        for i in kwargs.keys():
+            setattr(self, i, kwargs[i])
+
+    def submit(self, filter_id, memory_requirement=8):
+
+        import biowulf
+        swarm = biowulf.Swarm(memory_requirement=memory_requirement)
+
+        parameter_space = [(tl, td, e, ed, ts, c,s,sn,t,tn) for tl in self.threshold_levels \
+                for td in self.threshold_directions \
+                for e in self.event_signals for ed in self.event_detections \
+                for ts in self.time_scales for c in self.cascade_methods \
+                for s,sn in self.spatial_samples \
+                for t,tn in self.temporal_samples]
+        for tl, td, e, ed, ts, c,s,sn,t,tn in parameter_space:
+            if self.verbose:
+                parameters = str(ts)+'_'+str(tl)+'_'+td+'_'+str(e)+'_'+ed+'_'+str(c)+'_'+str(sn)+'_'+str(tn)
+                print parameters
+            job_string = "from sqlalchemy import create_engine\n"+\
+                "from sqlalchemy.orm.session import Session\n"+\
+                "engine = create_engine(database_url, echo=False)\n"+\
+                "session = Session(engine)\n"+\
+                "analysis = Analysis(%r, " % (self.filename)+\
+                    "threshold_level = %r, " % (tl)+\
+                    "threshold_direction = %r, " % (td)+\
+                    "event_signal = %r, " % (e)+\
+                    "event_detection = %r, " % (ed)+\
+                    "time_scale = %r, " % (ts)+\
+                    "cascade_method = %r, " % (c)+\
+                    "spatial_sample = %r, " % (s)+\
+                    "spatial_sample_name = %r, " % (sn)+\
+                    "temporal_sample = %r, " % (t)+\
+                    "temporal_sample_name = %r, " % (tn)+\
+                    "HDF5_group = %r)\n" % (self.HDF5_group)+\
+                "analysis.write_to_database(session, filter_id)\n"+\
+                "session.close()\n"+\
+                "session.bind.dispose()\n"
+            swarm.add_job(job_string)
+        swarm.submit()
+        return
+
+
+
 def area_under_the_curve(data, baseline='mean'):
     """area_under_the_curve is currently a mentally messy but computationally fast way
     to get an array of area under the curve information, to be used to assign to events.

@@ -20,6 +20,8 @@ def write_to_HDF5(data, file_name, condition, sampling_rate, \
 
     if 'raw' not in list(f[condition]):
         f.create_group(condition+'/raw')
+    if 'displacement' not in list(f[condition+'/raw']):
+        f.create_dataset(condition+'/raw/displacement', data=data)
 
     HDF5_filter(f[condition], sampling_rate,\
             window=window, taps=taps, filter_type=filter_type,\
@@ -41,26 +43,33 @@ def HDF5_filter(file, sampling_rate,\
         window='hamming', taps=25, filter_type='FIR',\
         amplitude=False, displacement_aucs=False, amplitude_aucs=False,\
         overwrite=False,\
-        bands = ('raw', 'delta', 'theta', 'alpha', 'beta', 'gamma', 'high-gamma', 'broad'),
+        bands = ('delta', 'theta', 'alpha', 'beta', 'gamma', 'high-gamma', 'broad'),
         downsample='nyquist'):
 
     from avalanches import area_under_the_curve, fast_amplitude
     from time import gmtime, strftime, clock
+    if list(bands)==['raw'] or list(bands)==[]:
+        print("No bands to filter!")
+        return
     import h5py
 
-    if type(file)!=h5py._hl.group.Group:
+    if type(file)==str:
+        file = h5py.File(file)
+
+    if type(file)!=h5py._hl.group.Group and type(file)!=h5py._hl.files.File:
         return
 
     for i in file.keys():
         if i.startswith('filter'):
             continue
         elif not i.startswith('raw'):
-            HDF5_filter(file[i])
+            HDF5_filter(file[i], sampling_rate, window, taps, filter_type, amplitude, displacement_aucs,\
+                    amplitude_aucs, overwrite, bands, downsample)
         else:
             if 'displacement' not in file[i].keys():
                 return
             else:
-#At this point we know there is a 'raw' directory with a 'displacement' in it,
+#At this point we know there is a 'raw' directory with a 'displacement' in it, and we're supposed to filter something,
 # so we can filter!
                 if downsample==False:
                     downsample=sampling_rate
@@ -75,19 +84,18 @@ def HDF5_filter(file, sampling_rate,\
                 data = file['raw/displacement'][:,:]
 
                 for band in bands:
-                    print 'Processing '+band
                     if band=='raw':
-                        if amplitude and 'amplitude' not in file['raw'].keys():
-                            data_amplitude = fast_amplitude(data)
-                            file.create_dataset('/raw/amplitude', data=data_amplitude)
-                        if displacement_aucs and 'displacement_aucs' not in file['raw'].keys():
-                            data_displacement_aucs = area_under_the_curve(data)
-                            file.create_dataset('/raw/displacement_aucs', data=data_displacement_aucs)
-                        if amplitude_aucs and 'amplitude_aucs' not in file['raw'].keys():
-                            data_amplitude_aucs = area_under_the_curve(data_amplitude)
-                            file.create_dataset('/raw/amplitude_aucs', data=data_amplitude_aucs)
+#                        if amplitude and 'amplitude' not in file['raw'].keys():
+#                            data_amplitude = fast_amplitude(data)
+#                            file.create_dataset('/raw/amplitude', data=data_amplitude)
+#                        if displacement_aucs and 'displacement_aucs' not in file['raw'].keys():
+#                            data_displacement_aucs = area_under_the_curve(data)
+#                            file.create_dataset('/raw/displacement_aucs', data=data_displacement_aucs)
+#                        if amplitude_aucs and 'amplitude_aucs' not in file['raw'].keys():
+#                            data_amplitude_aucs = area_under_the_curve(data_amplitude)
+#                            file.create_dataset('/raw/amplitude_aucs', data=data_amplitude_aucs)
                         continue
-
+                    print 'Processing '+band
                     if band not in file[version].keys():
                         file.create_group(version+'/'+band)
 

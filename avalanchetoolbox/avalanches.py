@@ -556,6 +556,57 @@ def avalanche_metrics(input_metrics, avalanche_number):
             )
     return output_metrics
 
+def are_there_avalanches(data):
+
+    likelihoods = [2, 5, 10]
+    for L in likelihoods:
+        analysis = Analysis(data, threshold_level=L, threshold_method='Likelihood')
+        R1, p1 = analysis.size_events_fit.loglikelihood_ratio('power_law', 'exponential')
+        R2, p2 = analysis.size_events_fit.loglikelihood_ratio('truncated_power_law', 'lognormal')
+        if R1>0 and R2>0 and p1<.05 and p2<.05:
+            return "Yes, using a threshold level of "+str(L)+" at time scale "+str(analysis.time_scale)+\
+                    " with alpha of "+str(analysis.size_events_fit.power_law.alpha)+" and mean sigma "+str(analysis.sigma_events.mean())
+
+    return "Nope"
+
+def optimal_time_scale(event_times, xmax=None, cascade_method='grid'):
+    from numpy import zeros, argmin
+
+    alpha_differences = zeros(200)
+    for i in range(0,200):
+        time_scale = i+1
+        if time_scale%10==0:
+            print "Trying time scale "+str(time_scale)
+        alpha_differences[i] = abs(1.5 - alpha_from_event_times(event_times,\
+            time_scale, xmax=xmax, cascade_method=cascade_method))
+    time_scale = argmin(alpha_differences)+1
+    alpha_difference = alpha_differences[time_scale-1]
+#    from scipy.optimize import fmin
+#    from numpy import diff, mean
+#    initial_time_scale=mean(diff(event_times))
+#    time_scale, alpha_difference, iter, funcalls, warnflag, = \
+#            fmin(\
+#            lambda time_scale: abs(1.5 - alpha_from_event_times(event_times,\
+#            time_scale, xmax=xmax, cascade_method=cascade_method)),\
+#            initial_time_scale, full_output=1, disp=True)
+    return (time_scale, alpha_difference)
+
+def alpha_from_event_times(event_times, time_scale= 1, xmax=None, cascade_method='grid'):
+    if time_scale<1 or int(time_scale)!=time_scale:
+        from numpy import inf
+        return inf
+    from numpy import zeros
+    import powerlaw
+    starts, stops = find_cascades(event_times, time_scale, cascade_method)
+    n_avalanches = len(starts)
+    size_events = zeros(n_avalanches)
+    for i in range(n_avalanches):
+        avalanche_stop = bisect_left(event_times, stops[i])
+        avalanche_start = bisect_left(event_times, starts[i])
+        size_events[i] = float(avalanche_stop-avalanche_start)
+    fit = powerlaw.Fit(size_events, discrete=True, xmin=1, xmax=xmax)
+    return fit.power_law.alpha
+
 class Analysis(object):
 
     def __init__(self, data,**kwargs):
@@ -564,7 +615,7 @@ class Analysis(object):
         self.threshold_mode = 'SD'
         self.threshold_level = 3
         self.threshold_direction = 'both'
-        self.time_scale = 'mean_iei'
+        self.time_scale = 'optimal'
         self.cascade_method = 'grid'
         self.spatial_sample = 'all'
         self.spatial_sample_name = None
@@ -580,6 +631,11 @@ class Analysis(object):
             self.mean_iei = True
         else:
             self.mean_iei = False
+
+        if self.time_scale=='optimal':
+            self.optimal = True
+        else:
+            self.optimal = False
 
 
         #See if we've just been passed a reference to an HDF5 file. If so, load the relevant section.
@@ -705,6 +761,8 @@ class Analysis(object):
             self.event_times = m['event_times']
             self.event_channels = m['event_channels']
             self.interevent_intervals = m['interevent_intervals']
+            if self.time_scale == 'optimal':
+                self.time_scale, alpha_difference = optimal_time_scale(self.event_times, xmax=self.n_channels)
             if self.time_scale=='mean_iei':
                 self.time_scale = round(self.interevent_intervals.mean())
                 if self.time_scale == 0:

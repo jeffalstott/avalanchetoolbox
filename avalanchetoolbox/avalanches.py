@@ -572,7 +572,6 @@ class Analysis(object):
         self.temporal_sample_name = None
         self.HDF5_group=None
         self.fit_method = 'Likelihood'
-        self.n_time_points = data.shape[1]
 
         for i in kwargs.keys():
             setattr(self, i, kwargs[i])
@@ -584,11 +583,14 @@ class Analysis(object):
 
 
         #See if we've just been passed a reference to an HDF5 file. If so, load the relevant section.
-        try:
-            import h5py
-            if type(data)==unicode or type(data)==str:
+        if type(data)==unicode or type(data)==str:
+            try:
+                import h5py
                 self.data = h5py.File(data)[self.HDF5_group]
-        except ImportError:
+            except ImportError:
+                print("Need the Python package h5py in order to read string references to a HDF5 file!")
+                return
+        else:
             self.data = data
 
 #If we don't have a name for the spatial or temporal samples, generate one
@@ -605,21 +607,22 @@ class Analysis(object):
 
 #If we're reading from a HDF5 file, load what data is available
         try:
-            if type(data)==h5py._hl.group.Group:
-                if 'displacement' in data:
-                    self.data_displacement = data['displacement'][:,:]
+            import h5py
+            if type(self.data)==h5py._hl.group.Group:
+                if 'displacement' in self.data:
+                    self.data_displacement = self.data['displacement'][:,:]
                 else:
                     raise IOError("'When using an HDF5 input, need a dataset called 'displacement'")
-                if 'amplitude' in data:
-                    self.data_amplitude = data['amplitude'][:,:]
-                if 'displacement_aucs' in data:
-                    self.data_displacement_aucs = data['displacement_aucs'][:,:]
-                if 'amplitude_aucs' in data:
-                    self.data_amplitude_aucs = data['amplitude_aucs'][:,:]
+                if 'amplitude' in self.data:
+                    self.data_amplitude = self.data['amplitude'][:,:]
+                if 'displacement_aucs' in self.data:
+                    self.data_displacement_aucs = self.data['displacement_aucs'][:,:]
+                if 'amplitude_aucs' in self.data:
+                    self.data_amplitude_aucs = self.data['amplitude_aucs'][:,:]
             else:
-                self.data_displacement = data
+                self.data_displacement = self.data
         except ImportError:
-            self.data_displacement = data
+            self.data_displacement = self.data
 
         if self.event_signal == 'amplitude':
             self.signal = self.data_amplitude
@@ -657,7 +660,7 @@ class Analysis(object):
                     discrete=False
                 if measure in ['size_events']:
                     xmin = 1
-                    xmax = self.n_channels
+                    xmax = max(2, self.n_channels)
                 else:
                     xmin=None
                     xmax=None
@@ -666,7 +669,9 @@ class Analysis(object):
             except ImportError:
                 print("Must have the package 'powerlaw' installed! Install with 'easy_install powerlaw' or 'pip powerlaw'.")
                 return
-
+        elif name=='n_time_points':
+            self.n_time_points = self.signal.shape[1]
+            return self.n_time_points
         elif name=='data_amplitude':
             print("Calculating amplitudes")
             self.data_amplitude = fast_amplitude(self.data_displacement)
@@ -1028,12 +1033,33 @@ class Analysis(object):
                     results_subgroup.create_dataset(k, data=array([0]))
         return
     
-    def write_to_database(self, session, filter_id, write_events=True, write_avalanches=True, write_thresholds=True, write_analysis=True, write_fits=True):
+    def write_to_database(self, session, filter_id,\
+            write_events=True, write_avalanches=True, write_thresholds=True,\
+            write_analysis=True, write_fits=True, write_event_fits=False,\
+            overwrite=False):
         from avalanchetoolbox import database as db
         from numpy import zeros, median
         if write_avalanches and not write_analysis:
             print("Need to write avalanche analysis in order to write individual avalanches, as we need the id of the analysis in the database.")
             return
+        if not overwrite:
+            #If we're not overwriting, check if this parameter set has already been done for this filter_id
+            from sqlalchemy import and_
+            threshold_tolerance = .000001*self.threshold_level
+            #This is a hack to deal with storing all numbers as floats. Your database interface may (as mine does) result in switching back and forth between float32 and float64, which makes direction threshold_level=tl identification impossible.
+            analysis = session.query(db.AvalancheAnalysis).filter_by(\
+                    filter_id=filter_id, spatial_sample=self.spatial_sample_name, temporal_sample=self.temporal_sample_name,\
+                    threshold_mode=self.threshold_mode, threshold_direction=self.threshold_direction,\
+                    time_scale=self.time_scale, event_signal=self.event_signal, event_detection=self.event_detection, cascade_method=self.cascade_method).\
+                    filter(\
+                            and_(db.AvalancheAnalysis.threshold_level>(self.threshold_level-threshold_tolerance),\
+                            db.AvalancheAnalysis.threshold_level<(self.threshold_level+threshold_tolerance))).first()
+            #If we're not overwriting the database, and there is a previous analysis with saved statistics, then go on to the next set of parameters
+            if analysis:
+                print("This analysis was previously started!")
+            if not overwrite and analysis and analysis.fits:
+                print("This analysis was already done. Skipping.")
+                return
         if write_thresholds:
             threshold_ids = zeros(self.signal.shape[0])
             print("Writing thresholds")
@@ -1087,6 +1113,7 @@ class Analysis(object):
             analysis.threshold_level = self.threshold_level
             analysis.threshold_direction = self.threshold_direction
             analysis.time_scale = self.time_scale
+            analysis.time_scale_mean_iei = self.mean_iei
             analysis.event_signal = self.event_signal
             analysis.event_detection = self.event_detection
             analysis.cascade_method = self.cascade_method
@@ -1143,13 +1170,19 @@ class Analysis(object):
                 print("Must have the package 'powerlaw' installed! Install with 'easy_install powerlaw' or 'pip powerlaw'. ")
                 return
 
-            measures_to_fit = ['size_events', 'size_amplitudes', 'size_displacements',\
-                    'size_displacement_aucs', 'size_amplitude_aucs', 'durations',\
-                    'interavalanche_intervals', 'interevent_intervals', 'event_amplitudes',\
-                    'event_amplitude_aucs']
+            if write_event_fits:
+                measures_to_fit = ['size_events', 'size_amplitudes', 'size_displacements',\
+                        'size_displacement_aucs', 'size_amplitude_aucs', 'durations',\
+                        'interavalanche_intervals', 'interevent_intervals', 'event_amplitudes',\
+                        'event_amplitude_aucs']
+            else:
+                measures_to_fit = ['size_events', 'size_amplitudes', 'size_displacements',\
+                        'size_displacement_aucs', 'size_amplitude_aucs', 'durations',\
+                        'interavalanche_intervals']
 
             size_events_counter =0
             for i in measures_to_fit:
+                print("Fitting "+i)
                 fit = getattr(self, i+'_fit')
 
                 if i=='size_events':
@@ -1165,6 +1198,7 @@ class Analysis(object):
 
 
                 for j in fit.supported_distributions:
+                    print(j+" Distribution")
                     f = db.Fit()
                     f.method = fit.method
                     f.n_tail = fit.n_tail
@@ -1176,6 +1210,8 @@ class Analysis(object):
                     f.xmax = fit.xmax
                     f.analysis_id = analysis_id
 
+                    f.variable = i
+                    f.analysis_type = 'avalanches'
                     f.distribution = getattr(fit, j).name
                     f.parameter1_name = getattr(fit, j).parameter1_name
                     f.parameter1 = getattr(fit, j).parameter1
@@ -1190,7 +1226,7 @@ class Analysis(object):
                     f.power_law_p = p
                     LLR, p = fit.loglikelihood_ratio('truncated_power_law', j)
                     f.truncated_power_law_loglikelihood_ratio = LLR
-                    f.power_law_p = p
+                    f.truncated_power_law_p = p
                     f.D = getattr(fit, j).D
 
                     if j=='power_law':
@@ -1203,6 +1239,7 @@ class Analysis(object):
                         elif getattr(f,value)==-float('inf'):
                             setattr(f,value, None)
                     analysis.fits.append(f)
+            print("Finished writing fits")
             session.add(analysis)
             session.commit()
         return
@@ -1225,10 +1262,19 @@ class Analyses(object):
         for i in kwargs.keys():
             setattr(self, i, kwargs[i])
 
-    def submit(self, filter_id, memory_requirement=8):
+    def submit(self, filter_id, memory_requirement=8, overwrite=False, write_event_fits=True):
 
         import biowulf
         swarm = biowulf.Swarm(memory_requirement=memory_requirement)
+
+        if not overwrite:
+            from sqlalchemy import create_engine
+            from sqlalchemy.orm import sessionmaker
+            engine = create_engine(self.database_url, echo=False)
+            Session = sessionmaker(bind=engine)
+            session = Session()
+            from avalanchetoolbox import database as db
+            from sqlalchemy import and_
 
         parameter_space = [(tl, td, e, ed, ts, c,s,sn,t,tn) for tl in self.threshold_levels \
                 for td in self.threshold_directions \
@@ -1240,12 +1286,33 @@ class Analyses(object):
             if self.verbose:
                 parameters = str(ts)+'_'+str(tl)+'_'+td+'_'+str(e)+'_'+ed+'_'+str(c)+'_'+str(sn)+'_'+str(tn)
                 print parameters
+            if not overwrite:
+                #If we're not overwriting, check if this parameter set has already been done for this filter_id
+                threshold_tolerance = .000001*tl
+                #This is a hack to deal with storing all numbers as floats. Your database interface may (as mine does) result in switching back and forth between float32 and float64, which makes direction threshold_level=tl identification impossible.
+                analysis = session.query(db.AvalancheAnalysis).filter_by(\
+                        filter_id=filter_id, spatial_sample=sn, temporal_sample=tn,\
+                        threshold_mode=self.threshold_mode, threshold_direction=td,\
+                        time_scale=ts, event_signal=e, event_detection=ed, cascade_method=c).\
+                        filter(\
+                                and_(db.AvalancheAnalysis.threshold_level>(tl-threshold_tolerance),\
+                                db.AvalancheAnalysis.threshold_level<(tl+threshold_tolerance))).first()
+
+                #If we're not overwriting the database, and there is a previous analysis with saved statistics, then go on to the next set of parameters
+                if analysis:
+                    print("This analysis was previously started!")
+                if not overwrite and analysis and analysis.fits:
+                    print("This analysis was already done. Skipping.")
+                    continue
+
             job_string = "from sqlalchemy import create_engine\n"+\
                 "from sqlalchemy.orm.session import Session\n"+\
-                "engine = create_engine(database_url, echo=False)\n"+\
+                "engine = create_engine(%r, echo=False)\n" % (self.database_url)+\
                 "session = Session(engine)\n"+\
-                "analysis = Analysis(%r, " % (self.filename)+\
+                "from avalanchetoolbox import avalanches\n"+\
+                "analysis = avalanches.Analysis(%r, " % (self.filename)+\
                     "threshold_level = %r, " % (tl)+\
+                    "threshold_mode = %r, " % (self.threshold_mode)+\
                     "threshold_direction = %r, " % (td)+\
                     "event_signal = %r, " % (e)+\
                     "event_detection = %r, " % (ed)+\
@@ -1256,11 +1323,13 @@ class Analyses(object):
                     "temporal_sample = %r, " % (t)+\
                     "temporal_sample_name = %r, " % (tn)+\
                     "HDF5_group = %r)\n" % (self.HDF5_group)+\
-                "analysis.write_to_database(session, filter_id)\n"+\
+                "analysis.write_to_database(session, %r, write_event_fits=%r)\n" % (filter_id, write_event_fits)+\
                 "session.close()\n"+\
                 "session.bind.dispose()\n"
             swarm.add_job(job_string)
         swarm.submit()
+        session.close()
+        session.bind.dispose()
         return
 
 

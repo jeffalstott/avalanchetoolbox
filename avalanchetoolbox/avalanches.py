@@ -1033,7 +1033,7 @@ class Analysis(object):
                     results_subgroup.create_dataset(k, data=array([0]))
         return
     
-    def write_to_database(self, session, filter_id,\
+    def write_to_database(self, database_url, filter_id,\
             write_events=True, write_avalanches=True, write_thresholds=True,\
             write_analysis=True, write_fits=True, write_event_fits=False,\
             overwrite=False):
@@ -1042,6 +1042,11 @@ class Analysis(object):
         if write_avalanches and not write_analysis:
             print("Need to write avalanche analysis in order to write individual avalanches, as we need the id of the analysis in the database.")
             return
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        engine = create_engine(database_url, echo=False)
+        Session = sessionmaker(bind=engine)
+        session = Session()
         if not overwrite:
             #If we're not overwriting, check if this parameter set has already been done for this filter_id
             from sqlalchemy import and_
@@ -1060,9 +1065,12 @@ class Analysis(object):
             if not overwrite and analysis and analysis.fits:
                 print("This analysis was already done. Skipping.")
                 return
+            session.close()
+            session.bind.dispose()
         if write_thresholds:
-            threshold_ids = zeros(self.signal.shape[0])
             print("Writing thresholds")
+            threshold_ids = zeros(self.thresholds_up.shape[0])
+            session = Session()
             for i in range(self.signal.shape[0]):
                 t = db.Threshold(filter_id=filter_id)
                 t.signal = self.event_signal
@@ -1080,8 +1088,12 @@ class Analysis(object):
                 session.add(t)
                 session.commit()
                 threshold_ids[i] = t.id
+            session.close()
+            session.bind.dispose()
         if write_events:
             print("Writing events")
+            self.event_amplitude_aucs
+            session = Session()
             for i in range(self.n_events):
                 e = db.Event()
                 e.time = self.event_times[i]
@@ -1103,6 +1115,8 @@ class Analysis(object):
                         setattr(e,value, None)
                 session.add(e)
             session.commit()
+            session.close()
+            session.bind.dispose()
         if write_analysis:
             print("Writing avalanche analysis")
             from scipy.stats import mode
@@ -1132,11 +1146,15 @@ class Analysis(object):
                     setattr(analysis,value, None)
                 elif getattr(analysis,value)==-float('inf'):
                     setattr(analysis,value, None)
+            session = Session()
             session.add(analysis)
             session.commit()
             analysis_id = analysis.id
+            session.close()
+            session.bind.dispose()
         if write_avalanches:
             print("Writing avalanches")
+            session = Session()
             for i in range(self.n_avalanches):
                 a = db.Avalanche(analysis_id=analysis_id)
                 a.duration = self.durations[i]
@@ -1161,6 +1179,8 @@ class Analysis(object):
                         setattr(a,value, None)
                 session.add(a)
             session.commit()
+            session.close()
+            session.bind.dispose()
         if write_fits:
             print("Writing fits")
             from avalanchetoolbox import database as db
@@ -1240,8 +1260,11 @@ class Analysis(object):
                             setattr(f,value, None)
                     analysis.fits.append(f)
             print("Finished writing fits")
+            session = Session()
             session.add(analysis)
             session.commit()
+            session.close()
+            session.bind.dispose()
         return
 
 class Analyses(object):
@@ -1305,11 +1328,7 @@ class Analyses(object):
                     print("This analysis was already done. Skipping.")
                     continue
 
-            job_string = "from sqlalchemy import create_engine\n"+\
-                "from sqlalchemy.orm.session import Session\n"+\
-                "engine = create_engine(%r, echo=False)\n" % (self.database_url)+\
-                "session = Session(engine)\n"+\
-                "from avalanchetoolbox import avalanches\n"+\
+            job_string = "from avalanchetoolbox import avalanches\n"+\
                 "analysis = avalanches.Analysis(%r, " % (self.filename)+\
                     "threshold_level = %r, " % (tl)+\
                     "threshold_mode = %r, " % (self.threshold_mode)+\
@@ -1323,9 +1342,7 @@ class Analyses(object):
                     "temporal_sample = %r, " % (t)+\
                     "temporal_sample_name = %r, " % (tn)+\
                     "HDF5_group = %r)\n" % (self.HDF5_group)+\
-                "analysis.write_to_database(session, %r, write_event_fits=%r)\n" % (filter_id, write_event_fits)+\
-                "session.close()\n"+\
-                "session.bind.dispose()\n"
+                "analysis.write_to_database(%r, %r, write_event_fits=%r)\n" % (self.database_url, filter_id, write_event_fits)
             swarm.add_job(job_string)
         swarm.submit()
         session.close()

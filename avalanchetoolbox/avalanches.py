@@ -560,10 +560,11 @@ def are_there_avalanches(data):
 
     likelihoods = [2, 5, 10]
     for L in likelihoods:
-        analysis = Analysis(data, threshold_level=L, threshold_method='Likelihood')
+        analysis = Analysis(data, threshold_level=L, threshold_mode='Likelihood')
         R1, p1 = analysis.size_events_fit.loglikelihood_ratio('power_law', 'exponential')
         R2, p2 = analysis.size_events_fit.loglikelihood_ratio('truncated_power_law', 'lognormal')
-        if R1>0 and R2>0 and p1<.05 and p2<.05:
+        R3, p3 = analysis.size_events_fit.loglikelihood_ratio('truncated_power_law', 'gamma')
+        if R1>0 and R2>0 and R3>0and p1<.05 and p2<.05 and p3<.05:
             return "Yes, using a threshold level of "+str(L)+" at time scale "+str(analysis.time_scale)+\
                     " with alpha of "+str(analysis.size_events_fit.power_law.alpha)+" and mean sigma "+str(analysis.sigma_events.mean())
 
@@ -572,11 +573,11 @@ def are_there_avalanches(data):
 def optimal_time_scale(event_times, xmax=None, cascade_method='grid'):
     from numpy import zeros, argmin
 
-    alpha_differences = zeros(200)
-    for i in range(0,200):
+    alpha_differences = zeros(500)
+    for i in range(0,500):
         time_scale = i+1
-        if time_scale%10==0:
-            print "Trying time scale "+str(time_scale)
+#        if time_scale%10==0:
+#            print "Trying time scale "+str(time_scale)
         alpha_differences[i] = abs(1.5 - alpha_from_event_times(event_times,\
             time_scale, xmax=xmax, cascade_method=cascade_method))
     time_scale = argmin(alpha_differences)+1
@@ -643,11 +644,13 @@ class Analysis(object):
             try:
                 import h5py
                 self.data = h5py.File(data)[self.HDF5_group]
+                self.filename = data
             except ImportError:
                 print("Need the Python package h5py in order to read string references to a HDF5 file!")
                 return
         else:
             self.data = data
+            self.filename = None
 
 #If we don't have a name for the spatial or temporal samples, generate one
         if not self.spatial_sample_name:
@@ -1100,12 +1103,20 @@ class Analysis(object):
         if write_avalanches and not write_analysis:
             print("Need to write avalanche analysis in order to write individual avalanches, as we need the id of the analysis in the database.")
             return
+
+        print self.filename
+        print self.HDF5_group
+        parameters = str(self.event_signal)+str(self.threshold_mode)+'_'+str(self.threshold_level)+'_'+str(self.threshold_direction)+'_'+str(self.event_detection)+\
+                '_'+str(self.event_detection)+'_'+str(self.cascade_method)+'_'+str(self.time_scale)+'_'+str(self.spatial_sample_name)+'_'+str(self.temporal_sample_name)
+        print parameters
         from sqlalchemy import create_engine
         from sqlalchemy.orm import sessionmaker
         engine = create_engine(database_url, echo=False)
         Session = sessionmaker(bind=engine)
         session = Session()
         if not overwrite:
+            if type(self.time_scale)==str: #If time scale is to be calculated on the fly, calculate it now
+                self.event_times
             #If we're not overwriting, check if this parameter set has already been done for this filter_id
             from sqlalchemy import and_
             threshold_tolerance = .000001*self.threshold_level
@@ -1208,6 +1219,9 @@ class Analysis(object):
             session.add(analysis)
             session.commit()
             analysis_id = analysis.id
+            analysis_fit_association = analysis.fit_association
+            analysis_fit_association.fits
+            analysis_fit_association_id = analysis.fit_association_id
             session.close()
             session.bind.dispose()
         if write_avalanches:
@@ -1335,7 +1349,7 @@ class Analyses(object):
         self.threshold_mode = 'Likelihood'
         self.threshold_levels = [2, 5, 10]
         self.threshold_directions = ['both',]
-        self.time_scales = ['mean_iei',]
+        self.time_scales = ['optimal',]
         self.cascade_methods = ['grid',]
         self.spatial_samples= [('all', 'all'),]
         self.temporal_samples = [('all', 'all'),]

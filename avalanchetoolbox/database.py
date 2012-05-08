@@ -198,6 +198,8 @@ class AvalancheAnalysis(HasFits,Base):
     threshold_level = Column(Float)
     threshold_direction = Column(String(100))
     time_scale = Column(Float)
+    time_scale_mean_iei = Column(Boolean)
+    time_scale_optimal = Column(Boolean)
     event_signal = Column(String(100))
     event_detection = Column(String(100))
     cascade_method = Column(String(100))

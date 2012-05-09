@@ -535,6 +535,7 @@ class Analysis(object):
             session.bind.dispose()
         if write_channels:
             print("Writing channels")
+            filtered_channel_ids = zeros(self.n_channels)
             session = Session()
             for i in range(self.signal.shape[0]):
                 fc = db.Filtered_Channel(filter_id=filter_id)
@@ -543,6 +544,7 @@ class Analysis(object):
                 fc.SD = self.signal[i].std()
                 session.add(fc)
                 session.commit()
+                filtered_channel_ids[i] = fc.id
             session.close()
             session.bind.dispose()
         if write_thresholds:
@@ -550,7 +552,7 @@ class Analysis(object):
             threshold_ids = zeros(self.thresholds_up.shape[0])
             session = Session()
             for i in range(self.signal.shape[0]):
-                t = db.Threshold(filter_id=filter_id)
+                t = db.Threshold(filtered_channel_id=filtered_channel_ids[i])
                 t.signal = self.event_signal
                 t.mode = self.threshold_mode
                 t.level = self.threshold_level

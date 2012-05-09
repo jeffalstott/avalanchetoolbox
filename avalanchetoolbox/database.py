@@ -215,7 +215,8 @@ class AvalancheAnalysis(HasFits,Base):
     event_detection = Column(String(100))
     cascade_method = Column(String(100))
 
-    n = Column(Integer)
+    n_avalanches = Column(Integer)
+    n_channels = Column(Integer)
 
     interevent_intervals_mean = Column(Float)
     interevent_intervals_median = Column(Float)

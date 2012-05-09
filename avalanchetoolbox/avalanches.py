@@ -535,7 +535,7 @@ class Analysis(object):
             session.bind.dispose()
         if write_channels:
             print("Writing channels")
-            filtered_channel_ids = zeros(self.n_channels)
+            filtered_channel_ids = zeros(self.signal.shape[0])
             session = Session()
             for i in range(self.signal.shape[0]):
                 fc = db.Filtered_Channel(filter_id=filter_id)
@@ -611,6 +611,7 @@ class Analysis(object):
             analysis.event_signal = self.event_signal
             analysis.event_detection = self.event_detection
             analysis.cascade_method = self.cascade_method
+            analysis.n_channels = self.n_channels
             analysis.n_avalanches = self.n_avalanches
             analysis.interevent_intervals_mean = self.interevent_intervals.mean()
             analysis.interevent_intervals_median = median(self.interevent_intervals)

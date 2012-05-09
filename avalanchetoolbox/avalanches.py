@@ -768,7 +768,7 @@ class Analyses(object):
 
     def submit(self, filter_id, memory_requirement=8, overwrite=False, write_event_fits=True):
 
-        import biowulf
+        from Helix import biowulf
         swarm = biowulf.Swarm(memory_requirement=memory_requirement)
 
         if not overwrite:

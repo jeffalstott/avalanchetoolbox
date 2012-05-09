@@ -114,20 +114,31 @@ class Filter(Base):
     recording_id = Column(Integer, ForeignKey('Recording.id'))
     recording = relationship(Recording, cascade="all, delete-orphan", backref=backref('filters'), single_parent=True)
 
+class Filtered_Channel(Base):
+    mean = Column(Float)
+    SD = Column(Float)
+
+    channel = Column(Float)
+
+    filter_id = Column(Integer, ForeignKey('Filter.id'))
+    filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('thresholds'), single_parent=True)
+
 class Threshold(Base):
     signal = Column(String(100))
     mode = Column(String(100))
     level = Column(Float)
     up = Column(Float)
     down = Column(Float)
-    mean = Column(Float)
 
     channel = Column(Float)
     #channel_id = Column(Integer, ForeignKey('Channel.id'))
     #channel = relationship(Channel, cascade="all, delete-orphan", backref=backref('thresholds'), single_parent=True)
 
-    filter_id = Column(Integer, ForeignKey('Filter.id'))
-    filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('thresholds'), single_parent=True)
+#    filter_id = Column(Integer, ForeignKey('Filter.id'))
+#   filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('thresholds'), single_parent=True)
+
+    filtered_channel_id = Column(Integer, ForeignKey('Filtered_Channel.id'))
+    filter_channel = relationship(Filtered_Channel, cascade="all, delete-orphan", backref=backref('thresholds'), single_parent=True)
 
 class Event(Base):
     time = Column(Integer)

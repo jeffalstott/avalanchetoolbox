@@ -489,7 +489,8 @@ class Analysis(object):
         return
     
     def write_to_database(self, database_url, filter_id,\
-            write_events=True, write_avalanches=True, write_thresholds=True,\
+            write_channels=True, write_thresholds=True,\
+            write_events=True, write_avalanches=True,\
             write_analysis=True, write_fits=True, write_event_fits=False,\
             overwrite=False):
         from avalanchetoolbox import database as db
@@ -532,6 +533,18 @@ class Analysis(object):
                 return
             session.close()
             session.bind.dispose()
+        if write_channels:
+            print("Writing channels")
+            session = Session()
+            for i in range(self.signal.shape[0]):
+                fc = db.Filtered_Channel(filter_id=filter_id)
+                fc.channel = i
+                fc.mean = self.signal[i].mean()
+                fc.SD = self.signal[i].std()
+                session.add(fc)
+                session.commit()
+            session.close()
+            session.bind.dispose()
         if write_thresholds:
             print("Writing thresholds")
             threshold_ids = zeros(self.thresholds_up.shape[0])
@@ -543,7 +556,6 @@ class Analysis(object):
                 t.level = self.threshold_level
                 t.up = self.thresholds_up[i]
                 t.down = self.thresholds_down[i]
-                t.mean = self.signal[i].mean()
                 t.channel = i
                 for value in vars(t).keys():
                     if getattr(t,value)==float('inf'):

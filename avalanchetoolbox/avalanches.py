@@ -536,23 +536,19 @@ class Analysis(object):
         if write_channels:
             print("Writing channels")
             session = Session()
-            filtered_channel_ids = session.query(db.Filtered_Channel)\
-                    .filter_by(filter_id=filter_id)\
-                    .order_by(db.Filtered_Channel.channel)\
-                    .values(db.Filtered_Channel.id)
-            filtered_channel_ids = array(list(filtered_channel_ids)).flatten()
-            if filtered_channel_ids:
-                print("Already written")
-            else:
-                filtered_channel_ids = zeros(self.signal.shape[0])
-                for i in range(self.signal.shape[0]):
+            filtered_channel_ids = zeros(self.signal.shape[0])
+            for i in range(self.signal.shape[0]):
+                fc = session.query(db.Filtered_Channel)\
+                        .filter_by(filter_id=filter_id)\
+                        .filter_by(channel=i).first()
+                if not fc:
                     fc = db.Filtered_Channel(filter_id=filter_id)
                     fc.channel = i
                     fc.mean = self.signal[i].mean()
                     fc.SD = self.signal[i].std()
                     session.add(fc)
                     session.commit()
-                    filtered_channel_ids[i] = fc.id
+                filtered_channel_ids[i] = fc.id
             session.close()
             session.bind.dispose()
         if write_thresholds:
@@ -615,7 +611,13 @@ class Analysis(object):
                         elif getattr(e,value)==-float('inf'):
                             setattr(e,value, None)
                     session.add(e)
-                session.commit()
+                #All the event calculation will take awhile, and its possible another job will write the events to the database while we're churning. So check again before we write.
+                any_events = session.query(db.Event)\
+                        .filter_by(threshold_id=threshold_ids[0])\
+                        .filter_by(detection=self.event_detection)\
+                        .filter_by(direction=self.threshold_direction).first()
+                if not any_events:
+                    session.commit()
             session.close()
             session.bind.dispose()
         if write_analysis:

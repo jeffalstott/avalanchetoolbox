@@ -535,16 +535,24 @@ class Analysis(object):
             session.bind.dispose()
         if write_channels:
             print("Writing channels")
-            filtered_channel_ids = zeros(self.signal.shape[0])
             session = Session()
-            for i in range(self.signal.shape[0]):
-                fc = db.Filtered_Channel(filter_id=filter_id)
-                fc.channel = i
-                fc.mean = self.signal[i].mean()
-                fc.SD = self.signal[i].std()
-                session.add(fc)
-                session.commit()
-                filtered_channel_ids[i] = fc.id
+            filtered_channel_ids = session.query(db.Filtered_Channel)\
+                    .filter_by(filter_id=filter_id)\
+                    .order_by(db.Filtered_Channel.channel)\
+                    .values(db.Filtered_Channel.id)
+            filtered_channel_ids = array(list(filtered_channel_ids)).flatten()
+            if filtered_channel_ids:
+                print("Already written")
+            else:
+                filtered_channel_ids = zeros(self.signal.shape[0])
+                for i in range(self.signal.shape[0]):
+                    fc = db.Filtered_Channel(filter_id=filter_id)
+                    fc.channel = i
+                    fc.mean = self.signal[i].mean()
+                    fc.SD = self.signal[i].std()
+                    session.add(fc)
+                    session.commit()
+                    filtered_channel_ids[i] = fc.id
             session.close()
             session.bind.dispose()
         if write_thresholds:
@@ -552,20 +560,26 @@ class Analysis(object):
             threshold_ids = zeros(self.thresholds_up.shape[0])
             session = Session()
             for i in range(self.signal.shape[0]):
-                t = db.Threshold(filtered_channel_id=filtered_channel_ids[i])
-                t.signal = self.event_signal
-                t.mode = self.threshold_mode
-                t.level = self.threshold_level
-                t.up = self.thresholds_up[i]
-                t.down = self.thresholds_down[i]
-                t.channel = i
-                for value in vars(t).keys():
-                    if getattr(t,value)==float('inf'):
-                        setattr(t,value, None)
-                    elif getattr(t,value)==-float('inf'):
-                        setattr(t,value, None)
-                session.add(t)
-                session.commit()
+                t = session.query(db.Threshold)\
+                        .filter_by(filtered_channel_id=filtered_channel_ids[i])\
+                        .filter_by(signal=self.event_signal)\
+                        .filter_by(mode=self.threshold_mode)\
+                        .filter_by(level=self.threshold_level).first()
+                if not t:
+                    t = db.Threshold(filtered_channel_id=filtered_channel_ids[i])
+                    t.signal = self.event_signal
+                    t.mode = self.threshold_mode
+                    t.level = self.threshold_level
+                    t.up = self.thresholds_up[i]
+                    t.down = self.thresholds_down[i]
+                    t.channel = i
+                    for value in vars(t).keys():
+                        if getattr(t,value)==float('inf'):
+                            setattr(t,value, None)
+                        elif getattr(t,value)==-float('inf'):
+                            setattr(t,value, None)
+                    session.add(t)
+                    session.commit()
                 threshold_ids[i] = t.id
             session.close()
             session.bind.dispose()
@@ -573,27 +587,35 @@ class Analysis(object):
             print("Writing events")
             self.event_amplitude_aucs
             session = Session()
-            for i in range(self.n_events):
-                e = db.Event()
-                e.time = self.event_times[i]
-                e.displacement = self.event_displacements[i]
-                e.amplitude = self.event_amplitudes[i]
-                e.amplitude_auc = self.event_amplitude_aucs[i]
-                e.displacement_auc = self.event_displacement_aucs[i]
-                if i==0:
-                    e.interval = 0
-                else:
-                    e.interval = self.interevent_intervals[i-1]
-                e.detection = self.event_detection
-                e.direction = self.threshold_direction
-                e.threshold_id = threshold_ids[self.event_channels[i]]
-                for value in vars(e).keys():
-                    if getattr(e,value)==float('inf'):
-                        setattr(e,value, None)
-                    elif getattr(e,value)==-float('inf'):
-                        setattr(e,value, None)
-                session.add(e)
-            session.commit()
+            any_events = session.query(db.Event)\
+                    .filter_by(threshold_id=threshold_ids[0])\
+                    .filter_by(detection=self.event_detection)\
+                    .filter_by(direction=self.threshold_direction).first()
+            if any_events:
+                print("Events previously written for these thresholded channels with these event detection and direction settings")
+            #We assume that if any events were previously written for these settings, then all events were successfully written at once, and so we have a complete raster
+            else:
+                for i in range(self.n_events):
+                    e = db.Event()
+                    e.time = self.event_times[i]
+                    e.displacement = self.event_displacements[i]
+                    e.amplitude = self.event_amplitudes[i]
+                    e.amplitude_auc = self.event_amplitude_aucs[i]
+                    e.displacement_auc = self.event_displacement_aucs[i]
+                    if i==0:
+                        e.interval = 0
+                    else:
+                        e.interval = self.interevent_intervals[i-1]
+                    e.detection = self.event_detection
+                    e.direction = self.threshold_direction
+                    e.threshold_id = threshold_ids[self.event_channels[i]]
+                    for value in vars(e).keys():
+                        if getattr(e,value)==float('inf'):
+                            setattr(e,value, None)
+                        elif getattr(e,value)==-float('inf'):
+                            setattr(e,value, None)
+                    session.add(e)
+                session.commit()
             session.close()
             session.bind.dispose()
         if write_analysis:
@@ -671,7 +693,7 @@ class Analysis(object):
             try:
                 import powerlaw
             except ImportError:
-                print("Must have the package 'powerlaw' installed! Install with 'easy_install powerlaw' or 'pip powerlaw'. ")
+                print("Must have the package 'powerlaw' installed! Install with 'easy_install powerlaw' or 'pip powerlaw'.")
                 return
 
             if write_event_fits:

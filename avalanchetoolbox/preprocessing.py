@@ -109,6 +109,8 @@ def HDF5_filter(file, sampling_rate,\
                         file.create_dataset(version+'/'+band+'/displacement', data=filtered_data)
                     elif amplitude_aucs or amplitude or displacement_aucs:
                         filtered_data = file[version+'/'+band+'/displacement'][:,:]
+                        frequency_range = file[version+'/'+band].attrs['frequency_range']
+                        downsampled_rate = file[version+'/'+band].attrs['downsampled_rate']
                     else:
                         continue
 

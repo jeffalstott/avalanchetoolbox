@@ -495,6 +495,7 @@ class Analysis(object):
             overwrite=False):
         from avalanchetoolbox import database as db
         from numpy import zeros, median
+        from time import clock
         if write_avalanches and not write_analysis:
             print("Need to write avalanche analysis in order to write individual avalanches, as we need the id of the analysis in the database.")
             return
@@ -506,7 +507,7 @@ class Analysis(object):
         print parameters
         from sqlalchemy import create_engine
         from sqlalchemy.orm import sessionmaker
-        engine = create_engine(database_url, echo=False)
+        engine = create_engine(database_url, echo=False,  pool_recycle=3600)
         Session = sessionmaker(bind=engine)
         session = Session()
         if not overwrite:
@@ -535,6 +536,7 @@ class Analysis(object):
             session.bind.dispose()
         if write_channels:
             print("Writing channels")
+            tic = clock()
             session = Session()
             filtered_channel_ids = zeros(self.signal.shape[0])
             for i in range(self.signal.shape[0]):
@@ -549,10 +551,12 @@ class Analysis(object):
                     session.add(fc)
                     session.commit()
                 filtered_channel_ids[i] = fc.id
+            print clock()-tic
             session.close()
             session.bind.dispose()
         if write_thresholds:
             print("Writing thresholds")
+            tic = clock()
             threshold_ids = zeros(self.thresholds_up.shape[0])
             session = Session()
             for i in range(self.signal.shape[0]):
@@ -577,10 +581,12 @@ class Analysis(object):
                     session.add(t)
                     session.commit()
                 threshold_ids[i] = t.id
+            print clock()-tic
             session.close()
             session.bind.dispose()
         if write_events:
             print("Writing events")
+            tic = clock()
             self.event_amplitude_aucs
             session = Session()
             any_events = session.query(db.Event)\
@@ -616,12 +622,14 @@ class Analysis(object):
                         .filter_by(threshold_id=threshold_ids[0])\
                         .filter_by(detection=self.event_detection)\
                         .filter_by(direction=self.threshold_direction).first()
+                print clock()-tic
                 if not any_events:
                     session.commit()
             session.close()
             session.bind.dispose()
         if write_analysis:
             print("Writing avalanche analysis")
+            tic = clock()
             from scipy.stats import mode
             analysis = db.AvalancheAnalysis(filter_id=filter_id)
             analysis.spatial_sample = self.spatial_sample_name
@@ -651,6 +659,7 @@ class Analysis(object):
                     setattr(analysis,value, None)
                 elif getattr(analysis,value)==-float('inf'):
                     setattr(analysis,value, None)
+            print clock()-tic
             session = Session()
             session.add(analysis)
             session.commit()
@@ -662,6 +671,7 @@ class Analysis(object):
             session.bind.dispose()
         if write_avalanches:
             print("Writing avalanches")
+            tic = clock()
             session = Session()
             for i in range(self.n_avalanches):
                 a = db.Avalanche(analysis_id=analysis_id)
@@ -686,11 +696,13 @@ class Analysis(object):
                     elif getattr(a,value)==-float('inf'):
                         setattr(a,value, None)
                 session.add(a)
+            print clock()-tic
             session.commit()
             session.close()
             session.bind.dispose()
         if write_fits:
             print("Writing fits")
+            tic = clock()
             from avalanchetoolbox import database as db
             try:
                 import powerlaw
@@ -768,6 +780,7 @@ class Analysis(object):
                             setattr(f,value, None)
                     analysis.fits.append(f)
             print("Finished writing fits")
+            print clock()-tic
             session = Session()
             session.add(analysis)
             session.commit()

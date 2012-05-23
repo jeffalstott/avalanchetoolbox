@@ -502,7 +502,7 @@ class Analysis(object):
 
         print self.filename
         print self.HDF5_group
-        parameters = str(self.event_signal)+str(self.threshold_mode)+'_'+str(self.threshold_level)+'_'+str(self.threshold_direction)+'_'+str(self.event_detection)+\
+        parameters = str(self.event_signal)+'_'+str(self.threshold_mode)+'_'+str(self.threshold_level)+'_'+str(self.threshold_direction)+'_'+str(self.event_detection)+\
                 '_'+str(self.event_detection)+'_'+str(self.cascade_method)+'_'+str(self.time_scale)+'_'+str(self.spatial_sample_name)+'_'+str(self.temporal_sample_name)
         print parameters
         from sqlalchemy import create_engine
@@ -537,7 +537,6 @@ class Analysis(object):
         if write_channels:
             print("Writing channels")
             tic = clock()
-            session = Session()
             filtered_channel_ids = zeros(self.signal.shape[0])
             for i in range(self.signal.shape[0]):
                 fc = session.query(db.Filtered_Channel)\
@@ -558,7 +557,8 @@ class Analysis(object):
             print("Writing thresholds")
             tic = clock()
             threshold_ids = zeros(self.thresholds_up.shape[0])
-            session = Session()
+#Calculate thresholds BEFORE opening up a session/connection to the database
+            self.thresholds_upself.thresholds_down
             for i in range(self.signal.shape[0]):
                 t = session.query(db.Threshold)\
                         .filter_by(filtered_channel_id=filtered_channel_ids[i])\
@@ -566,6 +566,8 @@ class Analysis(object):
                         .filter_by(mode=self.threshold_mode)\
                         .filter_by(level=self.threshold_level).first()
                 if not t:
+                    session.close()
+                    session.bind.dispose()
                     t = db.Threshold(filtered_channel_id=filtered_channel_ids[i])
                     t.signal = self.event_signal
                     t.mode = self.threshold_mode
@@ -588,11 +590,12 @@ class Analysis(object):
             print("Writing events")
             tic = clock()
             self.event_amplitude_aucs
-            session = Session()
             any_events = session.query(db.Event)\
                     .filter_by(threshold_id=threshold_ids[0])\
                     .filter_by(detection=self.event_detection)\
                     .filter_by(direction=self.threshold_direction).first()
+            session.close()
+            session.bind.dispose()
             if any_events:
                 print("Events previously written for these thresholded channels with these event detection and direction settings")
             #We assume that if any events were previously written for these settings, then all events were successfully written at once, and so we have a complete raster
@@ -660,7 +663,6 @@ class Analysis(object):
                 elif getattr(analysis,value)==-float('inf'):
                     setattr(analysis,value, None)
             print clock()-tic
-            session = Session()
             session.add(analysis)
             session.commit()
             analysis_id = analysis.id
@@ -672,7 +674,6 @@ class Analysis(object):
         if write_avalanches:
             print("Writing avalanches")
             tic = clock()
-            session = Session()
             for i in range(self.n_avalanches):
                 a = db.Avalanche(analysis_id=analysis_id)
                 a.duration = self.durations[i]
@@ -781,7 +782,6 @@ class Analysis(object):
                     analysis.fits.append(f)
             print("Finished writing fits")
             print clock()-tic
-            session = Session()
             session.add(analysis)
             session.commit()
             session.close()
@@ -867,6 +867,8 @@ class Analyses(object):
                 if not overwrite and analysis and analysis.fits:
                     print("This analysis was already done. Skipping.")
                     continue
+                session.close()
+                session.bind.dispose()
 
             job_string = "from avalanchetoolbox import avalanches\n"+\
                 "analysis = avalanches.Analysis(%r, " % (self.filename)+\

@@ -611,7 +611,6 @@ class Analysis(object):
             print("Writing events")
             tic = clock()
 
-
             written_events = session.query(db.Filter)\
                 .join(db.Filter.thresholds)\
                 .join(db.Filtered_Channel.thresholds)\
@@ -624,7 +623,11 @@ class Analysis(object):
                     db.Event.displacement,\
                     db.Event.amplitude,\
                     db.Event.displacement_auc,\
-                    db.Event.amplitude_auc)
+                    db.Event.amplitude_auc,\
+                    db.Event.time,\
+                    db.Threshold.channel,\
+                    db.Event.interval)
+
             from numpy import asarray
             written_events = asarray(list(written_events))
             session.close()
@@ -632,12 +635,18 @@ class Analysis(object):
             #We calculate only the locations of the events locally (through self.n_events), and check if the count is the same as 
             #in the database. If so, we can get out of calculating the displacements, amplitudes, and areas under the curve, which
             #is the largest time sink of the event-related calculations
-            if written_events.shape[0]==self.n_events:
+
+            #Strike the above comment. We now assume rasters are written completely or not at all, thanks to the locking of the database.
+            #So if the length isn't 0, we assume it's a complete raster
+            if written_events.shape[0]!=0:
                 self.event_ids = written_events[:,0].astype('int')
                 self.event_displacements = written_events[:,1]
                 self.event_amplitudes = written_events[:,2]
                 self.event_displacement_aucs = written_events[:,3]
                 self.event_amplitude_aucs = written_events[:,4]
+                self.event_times = written_events[:,5].astype('int')
+                self.event_channels = written_events[:,6].astype('int')
+                self.interevent_intervals = written_events[:,7].astype('int')
             else:
                 self.event_amplitude_aucs
                 for i in range(self.n_events):
@@ -671,8 +680,20 @@ class Analysis(object):
                     .filter(db.Filter.id==filter_id)\
                     .values(db.Event_id)
                 written_events = asarray(list(written_events))
-                if written_events.shape[0]!=self.n_events:
+                if written_events.shape[0]==0:
                     session.commit()
+                    written_events = session.query(db.Filter)\
+                        .join(db.Filter.thresholds)\
+                        .join(db.Filtered_Channel.thresholds)\
+                        .join(db.Threshold.events)\
+                        .filter(db.Event.detection==self.event_detection)\
+                        .filter(db.Event.direction==self.threshold_direction)\
+                        .filter(db.Threshold.level==self.threshold_level)\
+                        .filter(db.Filter.id==filter_id)\
+                        .values(db.Event_id)
+                    self.event_ids = asarray(list(written_events)).astype('int')
+                else:
+                    self.event_ids = written_events[:].astype('int')
                 print clock()-tic
                 session.close()
                 session.bind.dispose()
@@ -724,6 +745,11 @@ class Analysis(object):
                 a = db.Avalanche(analysis_id=analysis_id)
                 a.start = self.starts[i]
                 a.stop = self.stops[i]
+                a.events = session.query(db.Event)\
+                    .filter(db.Event.time>=a.start)\
+                    .filter(db.Event.time<a.stop).all()
+                session.close()
+                session.bind.dipose()
                 a.duration = self.durations[i]
                 if i==0:
                     a.interval = 0

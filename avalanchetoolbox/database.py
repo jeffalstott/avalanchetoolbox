@@ -274,7 +274,7 @@ class Fit(Base):
     association_id = Column(Integer, ForeignKey("Fit_Association.id"))
     association = relationship(Fit_Association, cascade="all, delete-orphan", backref=backref("fits"), single_parent=True)
 
-Avalanche_Event_Association = Table('association', Base.metadata,
+Avalanche_Event_Association = Table('Avalanche_Event_Association', Base.metadata,
         Column('avalanche_id', Integer, ForeignKey('Avalanche.id')),
         Column('event_id', Integer, ForeignKey('Event.id')))
 

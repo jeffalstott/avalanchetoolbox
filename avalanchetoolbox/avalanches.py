@@ -612,7 +612,7 @@ class Analysis(object):
             tic = clock()
 
             written_events = session.query(db.Filter)\
-                .join(db.Filter.thresholds)\
+                .join(db.Filter.filtered_channels)\
                 .join(db.Filtered_Channel.thresholds)\
                 .join(db.Threshold.events)\
                 .filter(db.Event.detection==self.event_detection)\

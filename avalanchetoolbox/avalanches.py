@@ -524,7 +524,7 @@ class Analysis(object):
                 event_signal=self.event_signal, event_detection=self.event_detection, cascade_method=self.cascade_method).\
                 filter(\
                         and_(db.AvalancheAnalysis.threshold_level>(self.threshold_level-threshold_tolerance),\
-                        db.AvalancheAnalysis.threshold_level<(self.threshold_level+threshold_tolerance))).first()
+                        db.AvalancheAnalysis.threshold_level<(self.threshold_level+threshold_tolerance)))
 
             if type(self.time_scale)=='optimal':
                 analysis = analysis.filter_by(time_scale_optimal=True)
@@ -532,6 +532,8 @@ class Analysis(object):
                 analysis = analysis.filter_by(time_scale_mean_iei=True)
             else:
                 analysis = analysis.filter_by(time_scale=self.time_scale)
+
+            analysis = analysis.first()
 
             #If we're not overwriting the database, and there is a previous analysis with saved statistics, then go on to the next set of parameters
             if analysis:
@@ -563,37 +565,48 @@ class Analysis(object):
         if write_thresholds:
             print("Writing thresholds")
             tic = clock()
-            threshold_ids = zeros(self.thresholds_up.shape[0])
-#Calculate thresholds BEFORE opening up a session/connection to the database
-            self.thresholds_up
-            self.thresholds_down
+            threshold_ids = zeros(self.signal.shape[0])
+            thresholds_up = zeros(self.signal.shape[0])
+            thresholds_down = zeros(self.signal.shape[0])
             for i in range(self.signal.shape[0]):
                 t = session.query(db.Threshold)\
                         .filter_by(filtered_channel_id=filtered_channel_ids[i])\
                         .filter_by(signal=self.event_signal)\
                         .filter_by(mode=self.threshold_mode)\
                         .filter_by(level=self.threshold_level).first()
-                if not t:
-                    session.close()
-                    session.bind.dispose()
-                    t = db.Threshold(filtered_channel_id=filtered_channel_ids[i])
-                    t.signal = self.event_signal
-                    t.mode = self.threshold_mode
-                    t.level = self.threshold_level
-                    t.up = self.thresholds_up[i]
-                    t.down = self.thresholds_down[i]
-                    t.channel = i
-                    for value in vars(t).keys():
-                        if getattr(t,value)==float('inf'):
-                            setattr(t,value, None)
-                        elif getattr(t,value)==-float('inf'):
-                            setattr(t,value, None)
-                    session.add(t)
-                    session.commit()
-                threshold_ids[i] = t.id
+                session.close()
+                session.bind.dispose()
+                if t:
+                    threshold_ids[i] = t.id
+                    thresholds_up[i] = t.up
+                    thresholds_down[i] = t.down
+            if threshold_ids.all():
+                self.thresholds_up = thresholds_up
+                self.thresholds_down = thresholds_down
+            else:
+#If we didn't find all the thresholds previously calculated, calculate them now.
+                self.thresholds_up
+                self.thresholds_down
+                for i in range(len(threshold_ids)):
+                    if not i:
+                        t = db.Threshold(filtered_channel_id=filtered_channel_ids[i])
+                        t.signal = self.event_signal
+                        t.mode = self.threshold_mode
+                        t.level = self.threshold_level
+                        t.up = self.thresholds_up[i]
+                        t.down = self.thresholds_down[i]
+                        t.channel = i
+                        for value in vars(t).keys():
+                            if getattr(t,value)==float('inf'):
+                                setattr(t,value, None)
+                            elif getattr(t,value)==-float('inf'):
+                                setattr(t,value, None)
+                        session.add(t)
+                        session.commit()
+                        threshold_ids[i] = t.id
+                        session.close()
+                        session.bind.dispose()
             print clock()-tic
-            session.close()
-            session.bind.dispose()
         if write_events:
             print("Writing events")
             tic = clock()

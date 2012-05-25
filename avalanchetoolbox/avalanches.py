@@ -558,7 +558,8 @@ class Analysis(object):
             tic = clock()
             threshold_ids = zeros(self.thresholds_up.shape[0])
 #Calculate thresholds BEFORE opening up a session/connection to the database
-            self.thresholds_upself.thresholds_down
+            self.thresholds_up
+            self.thresholds_down
             for i in range(self.signal.shape[0]):
                 t = session.query(db.Threshold)\
                         .filter_by(filtered_channel_id=filtered_channel_ids[i])\
@@ -594,12 +595,14 @@ class Analysis(object):
                     .filter_by(threshold_id=threshold_ids[0])\
                     .filter_by(detection=self.event_detection)\
                     .filter_by(direction=self.threshold_direction).first()
-            session.close()
-            session.bind.dispose()
             if any_events:
                 print("Events previously written for these thresholded channels with these event detection and direction settings")
+                session.close()
+                session.bind.dispose()
             #We assume that if any events were previously written for these settings, then all events were successfully written at once, and so we have a complete raster
             else:
+                session.close()
+                session.bind.dispose()
                 for i in range(self.n_events):
                     e = db.Event()
                     e.time = self.event_times[i]
@@ -2200,7 +2203,7 @@ def sigma_vs_timegap(data, gap_range=(1,100)):
 
     return sigma_means, sigma_stds
 
-def signal_variability(data, subplots='all', title=None, density_limits=(-20,0), threshold_level=10):
+def signal_variability(data, subplots='all', title=None, density_limits=(-20,0), threshold_level=10, verbose=True):
 
     try:
         import h5py
@@ -2234,7 +2237,8 @@ def signal_variability(data, subplots='all', title=None, density_limits=(-20,0),
         for column in range(columns):
             if type(channelNum)==int and channelNum>=data.shape[0]:
                 continue
-            print("Calculating Channel "+str(channelNum))
+            if verbose:
+                print("Calculating Channel "+str(channelNum))
 
             if type(channelNum)==int:
                 ax = plt.subplot(rows, columns, channelNum+1)

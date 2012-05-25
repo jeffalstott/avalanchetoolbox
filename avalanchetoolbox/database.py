@@ -20,37 +20,37 @@ class Base(object):
 Base = declarative_base(cls=Base)
 
 class Subject(Base):
-    species = Column(String(100))
-    name = Column(String(100))
-    group_name = Column(String(100))
+    species = Column(String(50))
+    name = Column(String(50))
+    group_name = Column(String(50))
     number_in_group = Column(Integer)
 
 class Sensor(Base):
-    location = Column(String(100))
-    sensor_type = Column(String(100))
+    location = Column(String(50))
+    sensor_type = Column(String(50))
     sensor_count = Column(Integer)
-    sensors_locations_file = Column(String(100))
+    sensors_locations_file = Column(String(50))
     sensors_spacing = Column(Float)
 
 class Channel(Base):
     number = Column(Integer)
-    name = Column(String(100))
+    name = Column(String(50))
 
     sensor_id = Column(Integer, ForeignKey('Sensor.id'))
     sensor = relationship(Sensor, cascade="all, delete-orphan", backref=backref('channels'), single_parent=True)
 
 class Task(Base):
-    type = Column(String(100))
+    type = Column(String(50))
     description = Column(String(100))
-    eyes = Column(String(100))
+    eyes = Column(String(50))
 
 class Experiment(Base):
-    location = Column(String(100))
-    date = Column(String(100))
+    location = Column(String(50))
+    date = Column(String(50))
     visit_number = Column(Integer)
     mains = Column(Integer)
-    drug = Column(String(100))
-    rest = Column(String(100))
+    drug = Column(String(50))
+    rest = Column(String(50))
 
     subject_id = Column(Integer, ForeignKey('Subject.id'))
     subject = relationship(Subject, cascade="all, delete-orphan", backref=backref('experiments'), single_parent=True)
@@ -59,25 +59,25 @@ class Experiment(Base):
     task = relationship(Task, cascade="all, delete-orphan", backref=backref('experiments'), single_parent=True)
 
 class Task_Performance(Base):
-    measure1_name = Column(String(100)) 
+    measure1_name = Column(String(50)) 
     measure1_value = Column(Float) 
-    measure2_name = Column(String(100)) 
+    measure2_name = Column(String(50)) 
     measure2_value = Column(Float) 
-    measure3_name = Column(String(100))
+    measure3_name = Column(String(50))
     measure3_value = Column(Float)
-    measure4_name = Column(String(100)) 
+    measure4_name = Column(String(50)) 
     measure4_value = Column(Float) 
-    measure5_name = Column(String(100)) 
+    measure5_name = Column(String(50)) 
     measure5_value = Column(Float) 
-    measure6_name = Column(String(100))
+    measure6_name = Column(String(50))
     measure6_value = Column(Float)
-    measure7_name = Column(String(100)) 
+    measure7_name = Column(String(50)) 
     measure7_value = Column(Float) 
-    measure8_name = Column(String(100)) 
+    measure8_name = Column(String(50)) 
     measure8_value = Column(Float) 
-    measure9_name = Column(String(100))
+    measure9_name = Column(String(50))
     measure9_value = Column(Float)
-    measure10_name = Column(String(100))
+    measure10_name = Column(String(50))
     measure10_value = Column(Float)
 
     task_id = Column(Integer, ForeignKey('Task.id'))
@@ -100,10 +100,10 @@ class Recording(Base):
     sensor = relationship(Sensor, cascade="all, delete-orphan", backref=backref('recordings'), single_parent=True)
 
 class Filter(Base):
-    filter_type = Column(String(100))
+    filter_type = Column(String(50))
     poles = Column(Integer)
-    window = Column(String(100))
-    band_name = Column(String(100))
+    window = Column(String(50))
+    band_name = Column(String(50))
     band_min = Column(Float)
     band_max = Column(Float)
     duration = Column(Float)
@@ -124,8 +124,8 @@ class Filtered_Channel(Base):
     filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('thresholds'), single_parent=True)
 
 class Threshold(Base):
-    signal = Column(String(100))
-    mode = Column(String(100))
+    signal = Column(String(50))
+    mode = Column(String(50))
     level = Column(Float)
     up = Column(Float)
     down = Column(Float)
@@ -143,8 +143,8 @@ class Threshold(Base):
 class Event(Base):
     time = Column(Integer)
     interval = Column(Integer)
-    detection = Column(String(100))
-    direction = Column(String(100))
+    detection = Column(String(50))
+    direction = Column(String(50))
     displacement = Column(Float)
     amplitude = Column(Float)
     amplitude_auc = Column(Float)
@@ -174,7 +174,7 @@ class Fit_Association(Base):
                                 fits=fits, 
                                 discriminator=discriminator)
 
-    discriminator = Column(String(100))
+    discriminator = Column(String(50))
     """Refers to the type of analysis."""
 
     @property
@@ -203,17 +203,17 @@ class HasFits(object):
                                         uselist=False), single_parent=True)
 
 class AvalancheAnalysis(HasFits,Base):
-    spatial_sample = Column(String(100))
-    temporal_sample = Column(String(100))
-    threshold_mode = Column(String(100))
+    spatial_sample = Column(String(50))
+    temporal_sample = Column(String(50))
+    threshold_mode = Column(String(50))
     threshold_level = Column(Float)
-    threshold_direction = Column(String(100))
+    threshold_direction = Column(String(50))
     time_scale = Column(Float)
     time_scale_mean_iei = Column(Boolean)
     time_scale_optimal = Column(Boolean)
-    event_signal = Column(String(100))
-    event_detection = Column(String(100))
-    cascade_method = Column(String(100))
+    event_signal = Column(String(50))
+    event_detection = Column(String(50))
+    cascade_method = Column(String(50))
 
     n_avalanches = Column(Integer)
     n_channels = Column(Integer)
@@ -245,15 +245,15 @@ class AvalancheAnalysis(HasFits,Base):
     filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('avalancheanalyses'), single_parent=True)
 
 class Fit(Base):
-    analysis_type = Column(String(100)) 
-    variable = Column(String(100)) 
-    method = Column(String(100))
-    distribution = Column(String(100)) 
-    parameter1_name = Column(String(100)) 
+    analysis_type = Column(String(50)) 
+    variable = Column(String(50)) 
+    method = Column(String(50))
+    distribution = Column(String(50)) 
+    parameter1_name = Column(String(50)) 
     parameter1 = Column(Float) 
-    parameter2_name = Column(String(100)) 
+    parameter2_name = Column(String(50)) 
     parameter2 = Column(Float) 
-    parameter3_name = Column(String(100))
+    parameter3_name = Column(String(50))
     parameter3 = Column(Float)
     fixed_xmin = Column(Boolean)
     xmin = Column(Float) 
@@ -281,6 +281,8 @@ class Fit(Base):
 class Avalanche(Base):
     duration = Column(Integer)
     interval = Column(Integer)
+    start = Column(Integer)
+    stop = Column(Integer)
     size_events = Column(Integer)
     size_displacements = Column(Float)
     size_amplitudes = Column(Float)

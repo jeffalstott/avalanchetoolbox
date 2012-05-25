@@ -24,13 +24,9 @@ class Analysis(object):
 
         if self.time_scale=='mean_iei':
             self.mean_iei = True
-        else:
-            self.mean_iei = False
 
         if self.time_scale=='optimal':
             self.optimal = True
-        else:
-            self.optimal = False
 
 
         #See if we've just been passed a reference to an HDF5 file. If so, load the relevant section.
@@ -187,6 +183,13 @@ class Analysis(object):
             from numpy import unique
             self.n_channels = len(unique(self.event_channels))
             return self.n_channels
+        elif name=='optimal':
+                optimal_ts, alpha_difference = optimal_time_scale(self.event_times, xmax=self.n_channels)
+                self.optimal = (self.time_scale==optimal_ts)
+                return self.optimal
+        elif name=='mean_iei':
+                self.mean_iei = (self.time_scale==round(self.interevent_intervals.mean()))
+                return self.mean_iei
         elif name=='event_displacements':
             self.event_displacements = self.data_displacement[self.event_channels, self.event_times]
             return self.event_displacements
@@ -511,21 +514,25 @@ class Analysis(object):
         Session = sessionmaker(bind=engine)
         session = Session()
         if not overwrite:
-            if type(self.time_scale)==str: #If time scale is to be calculated on the fly (ex. is 'mean_iei' or 'optimal'), calculate it now
-                self.event_times
             #If we're not overwriting, check if this parameter set has already been done for this filter_id
             from sqlalchemy import and_
             threshold_tolerance = .000001*self.threshold_level
             #This is a hack to deal with storing all numbers as floats. Your database interface may (as mine does) result in switching back and forth between float32 and float64, which makes direction threshold_level=tl identification impossible.
-            
             analysis = session.query(db.AvalancheAnalysis).filter_by(\
-                    filter_id=filter_id, spatial_sample=self.spatial_sample_name, temporal_sample=self.temporal_sample_name,\
-                    threshold_mode=self.threshold_mode, threshold_direction=self.threshold_direction,\
-                    time_scale_mean_iei=self.mean_iei, time_scale_optimal=self.optimal,\
-                    time_scale=self.time_scale, event_signal=self.event_signal, event_detection=self.event_detection, cascade_method=self.cascade_method).\
-                    filter(\
-                            and_(db.AvalancheAnalysis.threshold_level>(self.threshold_level-threshold_tolerance),\
-                            db.AvalancheAnalysis.threshold_level<(self.threshold_level+threshold_tolerance))).first()
+                filter_id=filter_id, spatial_sample=self.spatial_sample_name, temporal_sample=self.temporal_sample_name,\
+                threshold_mode=self.threshold_mode, threshold_direction=self.threshold_direction,\
+                event_signal=self.event_signal, event_detection=self.event_detection, cascade_method=self.cascade_method).\
+                filter(\
+                        and_(db.AvalancheAnalysis.threshold_level>(self.threshold_level-threshold_tolerance),\
+                        db.AvalancheAnalysis.threshold_level<(self.threshold_level+threshold_tolerance))).first()
+
+            if type(self.time_scale)=='optimal':
+                analysis = analysis.filter_by(time_scale_optimal=True)
+            elif type(self.time_scale)=='mean_iei':
+                analysis = analysis.filter_by(time_scale_mean_iei=True)
+            else:
+                analysis = analysis.filter_by(time_scale=self.time_scale)
+
             #If we're not overwriting the database, and there is a previous analysis with saved statistics, then go on to the next set of parameters
             if analysis:
                 print("This analysis was previously started!")
@@ -679,7 +686,8 @@ class Analysis(object):
             tic = clock()
             for i in range(self.n_avalanches):
                 a = db.Avalanche(analysis_id=analysis_id)
-                a.duration = self.durations[i]
+                a.start = self.starts[i]
+                a.stop = self.stops[i]
                 a.duration = self.durations[i]
                 if i==0:
                     a.interval = 0

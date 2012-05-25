@@ -610,19 +610,36 @@ class Analysis(object):
         if write_events:
             print("Writing events")
             tic = clock()
-            self.event_amplitude_aucs
-            any_events = session.query(db.Event)\
-                    .filter_by(threshold_id=threshold_ids[0])\
-                    .filter_by(detection=self.event_detection)\
-                    .filter_by(direction=self.threshold_direction).first()
-            if any_events:
-                print("Events previously written for these thresholded channels with these event detection and direction settings")
-                session.close()
-                session.bind.dispose()
-            #We assume that if any events were previously written for these settings, then all events were successfully written at once, and so we have a complete raster
+
+
+            written_events = session.query(db.Filter)\
+                .join(db.Filter.thresholds)\
+                .join(db.Filtered_Channel.thresholds)\
+                .join(db.Threshold.events)\
+                .filter(db.Event.detection==self.event_detection)\
+                .filter(db.Event.direction==self.threshold_direction)\
+                .filter(db.Threshold.level==self.threshold_level)\
+                .filter(db.Filter.id==filter_id)\
+                .values(db.Event_id,\
+                    db.Event.displacement,\
+                    db.Event.amplitude,\
+                    db.Event.displacement_auc,\
+                    db.Event.amplitude_auc)
+            from numpy import asarray
+            written_events = asarray(list(written_events))
+            session.close()
+            session.bind.dispose()
+            #We calculate only the locations of the events locally (through self.n_events), and check if the count is the same as 
+            #in the database. If so, we can get out of calculating the displacements, amplitudes, and areas under the curve, which
+            #is the largest time sink of the event-related calculations
+            if written_events.shape[0]==self.n_events:
+                self.event_ids = written_events[:,0].astype('int')
+                self.event_displacements = written_events[:,1]
+                self.event_amplitudes = written_events[:,2]
+                self.event_displacement_aucs = written_events[:,3]
+                self.event_amplitude_aucs = written_events[:,4]
             else:
-                session.close()
-                session.bind.dispose()
+                self.event_amplitude_aucs
                 for i in range(self.n_events):
                     e = db.Event()
                     e.time = self.event_times[i]
@@ -644,15 +661,21 @@ class Analysis(object):
                             setattr(e,value, None)
                     session.add(e)
                 #All the event calculation will take awhile, and its possible another job will write the events to the database while we're churning. So check again before we write.
-                any_events = session.query(db.Event)\
-                        .filter_by(threshold_id=threshold_ids[0])\
-                        .filter_by(detection=self.event_detection)\
-                        .filter_by(direction=self.threshold_direction).first()
-                print clock()-tic
-                if not any_events:
+                written_events = session.query(db.Filter)\
+                    .join(db.Filter.thresholds)\
+                    .join(db.Filtered_Channel.thresholds)\
+                    .join(db.Threshold.events)\
+                    .filter(db.Event.detection==self.event_detection)\
+                    .filter(db.Event.direction==self.threshold_direction)\
+                    .filter(db.Threshold.level==self.threshold_level)\
+                    .filter(db.Filter.id==filter_id)\
+                    .values(db.Event_id)
+                written_events = asarray(list(written_events))
+                if written_events.shape[0]!=self.n_events:
                     session.commit()
-            session.close()
-            session.bind.dispose()
+                print clock()-tic
+                session.close()
+                session.bind.dispose()
         if write_analysis:
             print("Writing avalanche analysis")
             tic = clock()

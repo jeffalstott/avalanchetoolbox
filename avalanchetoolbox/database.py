@@ -1,6 +1,6 @@
 #Some code, particularly how to join up the Fit table with the AvalancheAnalysis with a polymorphic association, taken from http://techspot.zzzeek.org/files/2007/discriminator_on_association.py
 #This polymorphic association was set up in order to allow for future, different kinds of analyses that also would warrant distribution fit analyses
-from sqlalchemy import Column, Float, Integer, String, Boolean, ForeignKey
+from sqlalchemy import Column, Float, Integer, String, Boolean, ForeignKey, Table
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.associationproxy import association_proxy
@@ -121,7 +121,7 @@ class Filtered_Channel(Base):
     channel = Column(Float)
 
     filter_id = Column(Integer, ForeignKey('Filter.id'))
-    filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('thresholds'), single_parent=True)
+    filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('filtered_channels'), single_parent=True)
 
 class Threshold(Base):
     signal = Column(String(50))
@@ -149,10 +149,6 @@ class Event(Base):
     amplitude = Column(Float)
     amplitude_auc = Column(Float)
     displacement_auc = Column(Float)
-    t_ratio_amplitude = Column(Float)
-    t_ratio_displacement = Column(Float)
-    t_ratio_displacement_aucs = Column(Float)
-    t_ratio_amplitude_aucs = Column(Float)
 
     #channel_id = Column(Integer, ForeignKey('Channel.id'))
     #channel = relationship(Channel, cascade="all, delete-orphan", backref=backref('events'), single_parent=True)
@@ -278,6 +274,10 @@ class Fit(Base):
     association_id = Column(Integer, ForeignKey("Fit_Association.id"))
     association = relationship(Fit_Association, cascade="all, delete-orphan", backref=backref("fits"), single_parent=True)
 
+Avalanche_Event_Association = Table('association', Base.metadata,
+        Column('avalanche_id', Integer, ForeignKey('Avalanche.id')),
+        Column('event_id', Integer, ForeignKey('Event.id')))
+
 class Avalanche(Base):
     duration = Column(Integer)
     interval = Column(Integer)
@@ -295,6 +295,10 @@ class Avalanche(Base):
 
     analysis_id = Column(Integer, ForeignKey('AvalancheAnalysis.id'))
     analysis = relationship(AvalancheAnalysis, cascade="all, delete-orphan", backref=backref('avalanches'), single_parent=True)
+
+    events = relationship("Event",
+            secondary=Avalanche_Event_Association,
+            backref="avalanches")
 
 def create_database(url):
     from sqlalchemy import create_engine

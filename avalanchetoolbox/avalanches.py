@@ -154,19 +154,7 @@ class Analysis(object):
             self.event_times = m['event_times']
             self.event_channels = m['event_channels']
             self.interevent_intervals = m['interevent_intervals']
-            if self.time_scale == 'optimal':
-                self.time_scale, alpha_difference = optimal_time_scale(self.event_times, xmax=self.n_channels)
-            if self.time_scale=='mean_iei':
-                self.time_scale = round(self.interevent_intervals.mean())
-                if self.time_scale == 0:
-                    print("Mean interevent interval is below .5, and would round to 0. Using 1 instead.")
-                    self.time_scale == 1.0
-                print("Time scale: %f time steps" % self.time_scale)
-                from numpy import isnan
-                if isnan(self.time_scale):
-                    if self.event_times.any():
-                        self.time_scale=1
-                        print("One event found, using time scale of 1 time step")
+            self.calculate_time_scale()
             if name=='event_times':
                 return self.event_times
             elif name=='event_channels':
@@ -467,6 +455,22 @@ class Analysis(object):
             return self.t_ratio_amplitude_aucs
         else:  raise AttributeError, name
 
+    def calculate_time_scale(self):
+        if self.time_scale == 'optimal':
+            self.time_scale, alpha_difference = optimal_time_scale(self.event_times, xmax=self.n_channels)
+        elif self.time_scale=='mean_iei':
+            self.time_scale = round(self.interevent_intervals.mean())
+            if self.time_scale == 0:
+                print("Mean interevent interval is below .5, and would round to 0. Using 1 instead.")
+                self.time_scale == 1.0
+            print("Time scale: %f time steps" % self.time_scale)
+            from numpy import isnan
+            if isnan(self.time_scale):
+                if self.event_times.any():
+                    self.time_scale=1
+                    print("One event found, using time scale of 1 time step")
+        return self.time_scale 
+
     def write_to_HDF5(self, file):
         print("Not really implemented yet. Might sort of work, though.")
         elements = list(file)
@@ -526,9 +530,9 @@ class Analysis(object):
                         and_(db.AvalancheAnalysis.threshold_level>(self.threshold_level-threshold_tolerance),\
                         db.AvalancheAnalysis.threshold_level<(self.threshold_level+threshold_tolerance)))
 
-            if type(self.time_scale)=='optimal':
+            if self.time_scale=='optimal':
                 analysis = analysis.filter_by(time_scale_optimal=True)
-            elif type(self.time_scale)=='mean_iei':
+            elif self.time_scale=='mean_iei':
                 analysis = analysis.filter_by(time_scale_mean_iei=True)
             else:
                 analysis = analysis.filter_by(time_scale=self.time_scale)
@@ -544,7 +548,7 @@ class Analysis(object):
             session.close()
             session.bind.dispose()
         if write_channels:
-            print("Writing channels")
+            print("Writing filtered channels")
             tic = clock()
             filtered_channel_ids = zeros(self.signal.shape[0])
             for i in range(self.signal.shape[0]):
@@ -580,6 +584,7 @@ class Analysis(object):
                     threshold_ids[i] = t.id
                     thresholds_up[i] = t.up
                     thresholds_down[i] = t.down
+#                print threshold_ids
             if threshold_ids.all():
                 self.thresholds_up = thresholds_up
                 self.thresholds_down = thresholds_down
@@ -588,7 +593,7 @@ class Analysis(object):
                 self.thresholds_up
                 self.thresholds_down
                 for i in range(len(threshold_ids)):
-                    if not i:
+                    if not threshold_ids[i]:
                         t = db.Threshold(filtered_channel_id=filtered_channel_ids[i])
                         t.signal = self.event_signal
                         t.mode = self.threshold_mode
@@ -619,7 +624,8 @@ class Analysis(object):
                 .filter(db.Event.direction==self.threshold_direction)\
                 .filter(db.Threshold.level==self.threshold_level)\
                 .filter(db.Filter.id==filter_id)\
-                .values(db.Event_id,\
+                .order_by(db.Event.time)\
+                .values(db.Event.id,\
                     db.Event.displacement,\
                     db.Event.amplitude,\
                     db.Event.displacement_auc,\
@@ -671,26 +677,26 @@ class Analysis(object):
                     session.add(e)
                 #All the event calculation will take awhile, and its possible another job will write the events to the database while we're churning. So check again before we write.
                 written_events = session.query(db.Filter)\
-                    .join(db.Filter.thresholds)\
+                    .join(db.Filter.filtered_channels)\
                     .join(db.Filtered_Channel.thresholds)\
                     .join(db.Threshold.events)\
                     .filter(db.Event.detection==self.event_detection)\
                     .filter(db.Event.direction==self.threshold_direction)\
                     .filter(db.Threshold.level==self.threshold_level)\
                     .filter(db.Filter.id==filter_id)\
-                    .values(db.Event_id)
+                    .values(db.Event.id)
                 written_events = asarray(list(written_events))
                 if written_events.shape[0]==0:
                     session.commit()
                     written_events = session.query(db.Filter)\
-                        .join(db.Filter.thresholds)\
+                        .join(db.Filter.filtered_channels)\
                         .join(db.Filtered_Channel.thresholds)\
                         .join(db.Threshold.events)\
                         .filter(db.Event.detection==self.event_detection)\
                         .filter(db.Event.direction==self.threshold_direction)\
                         .filter(db.Threshold.level==self.threshold_level)\
                         .filter(db.Filter.id==filter_id)\
-                        .values(db.Event_id)
+                        .values(db.Event.id)
                     self.event_ids = asarray(list(written_events)).astype('int')
                 else:
                     self.event_ids = written_events[:].astype('int')
@@ -700,38 +706,41 @@ class Analysis(object):
         if write_analysis:
             print("Writing avalanche analysis")
             tic = clock()
-            from scipy.stats import mode
-            analysis = db.AvalancheAnalysis(filter_id=filter_id)
-            analysis.spatial_sample = self.spatial_sample_name
-            analysis.temporal_sample = self.temporal_sample_name
-            analysis.threshold_mode = self.threshold_mode
-            analysis.threshold_level = self.threshold_level
-            analysis.threshold_direction = self.threshold_direction
-            analysis.time_scale = self.time_scale
-            analysis.time_scale_mean_iei = self.mean_iei
-            analysis.time_scale_optimal = self.optimal
-            analysis.event_signal = self.event_signal
-            analysis.event_detection = self.event_detection
-            analysis.cascade_method = self.cascade_method
-            analysis.n_channels = self.n_channels
-            analysis.n_avalanches = self.n_avalanches
-            analysis.interevent_intervals_mean = self.interevent_intervals.mean()
-            analysis.interevent_intervals_median = median(self.interevent_intervals)
-            analysis.interevent_intervals_mode = mode(self.interevent_intervals)[0][0]
-            analysis.sigma_events = self.sigma_events.mean()
-            analysis.sigma_events_expected = self.sigma_events_expected
-            analysis.sigma_displacements = self.sigma_displacements.mean()
-            analysis.sigma_amplitudes = self.sigma_amplitudes.mean()
-            analysis.sigma_amplitude_aucs = self.sigma_amplitude_aucs.mean()
+            if not analysis:
+                from scipy.stats import mode
+                analysis = db.AvalancheAnalysis(filter_id=filter_id)
+                analysis.spatial_sample = self.spatial_sample_name
+                analysis.temporal_sample = self.temporal_sample_name
+                analysis.threshold_mode = self.threshold_mode
+                analysis.threshold_level = self.threshold_level
+                analysis.threshold_direction = self.threshold_direction
+                self.calculate_time_scale()
+                analysis.time_scale = self.time_scale
+                analysis.time_scale_mean_iei = self.mean_iei
+                analysis.time_scale_optimal = self.optimal
+                analysis.event_signal = self.event_signal
+                analysis.event_detection = self.event_detection
+                analysis.cascade_method = self.cascade_method
+                analysis.n_channels = self.n_channels
+                analysis.n_avalanches = self.n_avalanches
+                analysis.interevent_intervals_mean = self.interevent_intervals.mean()
+                analysis.interevent_intervals_median = median(self.interevent_intervals)
+                analysis.interevent_intervals_mode = mode(self.interevent_intervals)[0][0]
+                analysis.sigma_events = self.sigma_events.mean()
+                analysis.sigma_events_expected = self.sigma_events_expected
+                analysis.sigma_displacements = self.sigma_displacements.mean()
+                analysis.sigma_amplitudes = self.sigma_amplitudes.mean()
+                analysis.sigma_amplitude_aucs = self.sigma_amplitude_aucs.mean()
+                analysis.fits = []
+                for value in vars(analysis).keys():
+                    if getattr(analysis,value)==float('inf'):
+                        setattr(analysis,value, None)
+                    elif getattr(analysis,value)==-float('inf'):
+                        setattr(analysis,value, None)
+                print clock()-tic
+                session.add(analysis)
+                session.commit()
             analysis.fits = []
-            for value in vars(analysis).keys():
-                if getattr(analysis,value)==float('inf'):
-                    setattr(analysis,value, None)
-                elif getattr(analysis,value)==-float('inf'):
-                    setattr(analysis,value, None)
-            print clock()-tic
-            session.add(analysis)
-            session.commit()
             analysis_id = analysis.id
             analysis_fit_association = analysis.fit_association
             analysis_fit_association.fits
@@ -741,15 +750,19 @@ class Analysis(object):
         if write_avalanches:
             print("Writing avalanches")
             tic = clock()
+            self.calculate_time_scale()
+            session2 = Session()
             for i in range(self.n_avalanches):
+                print i
                 a = db.Avalanche(analysis_id=analysis_id)
                 a.start = self.starts[i]
                 a.stop = self.stops[i]
+                print 'Querying'
                 a.events = session.query(db.Event)\
                     .filter(db.Event.time>=a.start)\
                     .filter(db.Event.time<a.stop).all()
                 session.close()
-                session.bind.dipose()
+                session.bind.dispose()
                 a.duration = self.durations[i]
                 if i==0:
                     a.interval = 0
@@ -769,11 +782,11 @@ class Analysis(object):
                         setattr(a,value, None)
                     elif getattr(a,value)==-float('inf'):
                         setattr(a,value, None)
-                session.add(a)
+                session2.add(a)
             print clock()-tic
-            session.commit()
-            session.close()
-            session.bind.dispose()
+            session2.commit()
+            session2.close()
+            session2.bind.dispose()
         if write_fits:
             print("Writing fits")
             tic = clock()

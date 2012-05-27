@@ -539,78 +539,125 @@ class Analysis(object):
 
             analysis = analysis.first()
 
+
             #If we're not overwriting the database, and there is a previous analysis with saved statistics, then go on to the next set of parameters
             if analysis:
                 print("This analysis was previously started!")
+                #Need to grab the avalanches for later, while we still have a session.
+                analysis.avalanches
             if not overwrite and analysis and analysis.fits:
                 print("This analysis was already done. Skipping.")
                 return
             session.close()
             session.bind.dispose()
+        self.calculate_time_scale()
         if write_channels:
             print("Writing filtered channels")
+            from numpy import asarray
             tic = clock()
-            filtered_channel_ids = zeros(self.signal.shape[0])
-            for i in range(self.signal.shape[0]):
-                fc = session.query(db.Filtered_Channel)\
-                        .filter_by(filter_id=filter_id)\
-                        .filter_by(channel=i).first()
-                if not fc:
+            fc = asarray(list(session.query(db.Filtered_Channel)\
+                    .filter_by(filter_id=filter_id)\
+                    .order_by(db.Filtered_Channel.channel)\
+                    .values(db.Filtered_Channel.id)))
+            if len(fc)==self.signal.shape[0]:
+                filtered_channel_ids = fc.flatten()
+            else:
+                #filtered_channel_ids = zeros(self.signal.shape[0])
+                for i in range(self.signal.shape[0]):
                     fc = db.Filtered_Channel(filter_id=filter_id)
                     fc.channel = i
                     fc.mean = self.signal[i].mean()
                     fc.SD = self.signal[i].std()
                     session.add(fc)
+                #It's possible the channels will be written by another job while we're calculting. So check again before comitting
+                session.execute("LOCK TABLES Filtered_Channel WRITE")
+                fc = asarray(list(session.query(db.Filtered_Channel)\
+                        .filter_by(filter_id=filter_id)\
+                        .order_by(db.Filtered_Channel.channel)\
+                        .values(db.Filtered_Channel.id)))
+                if len(fc)==self.signal.shape[0]:
+                    filtered_channel_ids = fc.flatten()
+                else:
                     session.commit()
-                filtered_channel_ids[i] = fc.id
+                    fc = asarray(list(session.query(db.Filtered_Channel)\
+                            .filter_by(filter_id=filter_id)\
+                            .order_by(db.Filtered_Channel.channel)\
+                            .values(db.Filtered_Channel.id)))
+                    filtered_channel_ids = fc.flatten()
+                session.execute("UNLOCK TABLES")
             print clock()-tic
             session.close()
             session.bind.dispose()
         if write_thresholds:
             print("Writing thresholds")
+            from numpy import asarray
             tic = clock()
-            threshold_ids = zeros(self.signal.shape[0])
-            thresholds_up = zeros(self.signal.shape[0])
-            thresholds_down = zeros(self.signal.shape[0])
-            for i in range(self.signal.shape[0]):
-                t = session.query(db.Threshold)\
-                        .filter_by(filtered_channel_id=filtered_channel_ids[i])\
-                        .filter_by(signal=self.event_signal)\
-                        .filter_by(mode=self.threshold_mode)\
-                        .filter_by(level=self.threshold_level).first()
-                session.close()
-                session.bind.dispose()
-                if t:
-                    threshold_ids[i] = t.id
-                    thresholds_up[i] = t.up
-                    thresholds_down[i] = t.down
-#                print threshold_ids
-            if threshold_ids.all():
-                self.thresholds_up = thresholds_up
-                self.thresholds_down = thresholds_down
+            t = asarray(list(session.query(db.Filter)\
+                    .join(db.Filter.filtered_channels)\
+                    .join(db.Filtered_Channel.thresholds)\
+                    .filter(db.Filter.id==filter_id)\
+                    .filter_by(signal=self.event_signal)\
+                    .filter_by(mode=self.threshold_mode)\
+                    .filter_by(level=self.threshold_level)\
+                    .order_by(db.Threshold.channel)\
+                    .values(db.Threshold.id,\
+                        db.Threshold.up,\
+                        db.Threshold.down)))
+            if t.shape[0]==self.signal.shape[0]:
+                threshold_ids = t[:,0]
+                self.thresholds_up = t[:,1]
+                self.thresholds_down = t[:,2]
             else:
 #If we didn't find all the thresholds previously calculated, calculate them now.
                 self.thresholds_up
                 self.thresholds_down
-                for i in range(len(threshold_ids)):
-                    if not threshold_ids[i]:
-                        t = db.Threshold(filtered_channel_id=filtered_channel_ids[i])
-                        t.signal = self.event_signal
-                        t.mode = self.threshold_mode
-                        t.level = self.threshold_level
-                        t.up = self.thresholds_up[i]
-                        t.down = self.thresholds_down[i]
-                        t.channel = i
-                        for value in vars(t).keys():
-                            if getattr(t,value)==float('inf'):
-                                setattr(t,value, None)
-                            elif getattr(t,value)==-float('inf'):
-                                setattr(t,value, None)
-                        session.add(t)
-                        session.commit()
-                        threshold_ids[i] = t.id
-                        session.close()
-                        session.bind.dispose()
+                for i in range(len(self.thresholds_up)):
+                    t = db.Threshold(filtered_channel_id=filtered_channel_ids[i])
+                    t.signal = self.event_signal
+                    t.mode = self.threshold_mode
+                    t.level = self.threshold_level
+                    t.up = self.thresholds_up[i]
+                    t.down = self.thresholds_down[i]
+                    t.channel = i
+                    for value in vars(t).keys():
+                        if getattr(t,value)==float('inf'):
+                            setattr(t,value, None)
+                        elif getattr(t,value)==-float('inf'):
+                            setattr(t,value, None)
+                    session.add(t)
+                #Check that thresholds weren't written by another job while this job was calculating
+                session.execute("LOCK TABLES Threshold WRITE, Filter READ, Filtered_Channel READ")
+                t = asarray(list(session.query(db.Filter)\
+                        .join(db.Filter.filtered_channels)\
+                        .join(db.Filtered_Channel.thresholds)\
+                        .filter(db.Filter.id==filter_id)\
+                        .filter_by(signal=self.event_signal)\
+                        .filter_by(mode=self.threshold_mode)\
+                        .filter_by(level=self.threshold_level)\
+                        .order_by(db.Threshold.channel)\
+                        .values(db.Threshold.id,\
+                            db.Threshold.up,\
+                            db.Threshold.down)))
+                print len(t)
+                if len(t)==self.signal.shape[0]:
+                    threshold_ids = t[:,0]
+                    self.thresholds_up = t[:,1]
+                    self.thresholds_down = t[:,2]
+                else:
+                    session.commit()
+                    t = asarray(list(session.query(db.Filter)\
+                            .join(db.Filter.filtered_channels)\
+                            .join(db.Filtered_Channel.thresholds)\
+                            .filter(db.Filter.id==filter_id)\
+                            .filter_by(signal=self.event_signal)\
+                            .filter_by(mode=self.threshold_mode)\
+                            .filter_by(level=self.threshold_level)\
+                            .order_by(db.Threshold.channel)\
+                            .values(db.Threshold.id)))
+                    threshold_ids = asarray(list(t))
+                session.execute("UNLOCK TABLES")
+            session.close()
+            session.bind.dispose()
             print clock()-tic
         if write_events:
             print("Writing events")
@@ -732,6 +779,7 @@ class Analysis(object):
                 analysis.sigma_amplitudes = self.sigma_amplitudes.mean()
                 analysis.sigma_amplitude_aucs = self.sigma_amplitude_aucs.mean()
                 analysis.fits = []
+                analysis.avalanches = []
                 for value in vars(analysis).keys():
                     if getattr(analysis,value)==float('inf'):
                         setattr(analysis,value, None)
@@ -740,6 +788,7 @@ class Analysis(object):
                 print clock()-tic
                 session.add(analysis)
                 session.commit()
+            analysis.avalanches
             analysis.fits = []
             analysis_id = analysis.id
             analysis_fit_association = analysis.fit_association
@@ -749,44 +798,46 @@ class Analysis(object):
             session.bind.dispose()
         if write_avalanches:
             print("Writing avalanches")
-            tic = clock()
-            self.calculate_time_scale()
-            session2 = Session()
-            for i in range(self.n_avalanches):
-                print i
-                a = db.Avalanche(analysis_id=analysis_id)
-                a.start = self.starts[i]
-                a.stop = self.stops[i]
-                print 'Querying'
-                a.events = session.query(db.Event)\
-                    .filter(db.Event.time>=a.start)\
-                    .filter(db.Event.time<a.stop).all()
-                session.close()
-                session.bind.dispose()
-                a.duration = self.durations[i]
-                if i==0:
-                    a.interval = 0
-                else:
-                    a.interval = self.interavalanche_intervals[i-1]
-                a.size_events = self.size_events[i]
-                a.size_displacements = self.size_displacements[i]
-                a.size_amplitudes = self.size_amplitudes[i]
-                a.size_amplitude_aucs = self.size_amplitude_aucs[i]
-                a.sigma_events = self.sigma_events[i]
-                a.sigma_displacements = self.sigma_displacements[i]
-                a.sigma_amplitudes = self.sigma_amplitudes[i]
-                a.sigma_displacement_aucs = self.sigma_displacement_aucs[i]
-                a.sigma_amplitude_aucs = self.sigma_amplitude_aucs[i]
-                for value in vars(a).keys():
-                    if getattr(a,value)==float('inf'):
-                        setattr(a,value, None)
-                    elif getattr(a,value)==-float('inf'):
-                        setattr(a,value, None)
-                session2.add(a)
-            print clock()-tic
-            session2.commit()
-            session2.close()
-            session2.bind.dispose()
+            if not overwrite and  analysis.avalanches:
+                print("Avalanches already written")
+            else:
+                tic = clock()
+                self.calculate_time_scale()
+                session2 = Session()
+                for i in range(self.n_avalanches):
+                    a = db.Avalanche(analysis_id=analysis_id)
+                    a.start = self.starts[i]
+                    a.stop = self.stops[i]
+                    a.events = session.query(db.Event)\
+                        .filter(db.Event.time>=a.start)\
+                        .filter(db.Event.time<a.stop).all()
+                    session.close()
+                    session.bind.dispose()
+                    a.duration = self.durations[i]
+                    if i==0:
+                        a.interval = 0
+                    else:
+                        a.interval = self.interavalanche_intervals[i-1]
+                    a.size_events = self.size_events[i]
+                    a.size_displacements = self.size_displacements[i]
+                    a.size_amplitudes = self.size_amplitudes[i]
+                    a.size_amplitude_aucs = self.size_amplitude_aucs[i]
+                    a.sigma_events = self.sigma_events[i]
+                    a.sigma_displacements = self.sigma_displacements[i]
+                    a.sigma_amplitudes = self.sigma_amplitudes[i]
+                    a.sigma_displacement_aucs = self.sigma_displacement_aucs[i]
+                    a.sigma_amplitude_aucs = self.sigma_amplitude_aucs[i]
+                    for value in vars(a).keys():
+                        if getattr(a,value)==float('inf'):
+                            setattr(a,value, None)
+                        elif getattr(a,value)==-float('inf'):
+                            setattr(a,value, None)
+                    session2.add(a)
+                print clock()-tic
+                session2.commit()
+                session2.close()
+                session2.bind.dispose()
+                print clock()-tic
         if write_fits:
             print("Writing fits")
             tic = clock()

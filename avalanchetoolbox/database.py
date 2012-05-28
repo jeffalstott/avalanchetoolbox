@@ -297,8 +297,8 @@ class Avalanche(Base):
     analysis = relationship(AvalancheAnalysis, cascade="all, delete-orphan", backref=backref('avalanches'), single_parent=True)
 
     events = relationship("Event",
-            secondary=Avalanche_Event_Association,
-            backref="avalanches")
+            secondary=Avalanche_Event_Association)#,
+#            backref="avalanches")
 
 def create_database(url):
     from sqlalchemy import create_engine

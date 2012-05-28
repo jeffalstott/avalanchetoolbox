@@ -109,7 +109,7 @@ class Analysis(object):
                     discrete=False
                 if measure in ['size_events']:
                     xmin = 1
-                    xmax = max(2, self.n_channels)
+                    xmax = max(2, self.n_active_channels)
                 else:
                     xmin=None
                     xmax=None
@@ -121,6 +121,9 @@ class Analysis(object):
         elif name=='n_time_points':
             self.n_time_points = self.signal.shape[1]
             return self.n_time_points
+        elif name=='n_channels':
+            self.n_channels = self.signal.shape[0]
+            return self.n_channels
         elif name=='data_amplitude':
             print("Calculating amplitudes")
             self.data_amplitude = fast_amplitude(self.data_displacement)
@@ -167,12 +170,12 @@ class Analysis(object):
         elif name=='n_events':
             self.n_events = len(self.event_times)
             return self.n_events
-        elif name=='n_channels':
+        elif name=='n_active_channels':
             from numpy import unique
-            self.n_channels = len(unique(self.event_channels))
-            return self.n_channels
+            self.n_active_channels = len(unique(self.event_channels))
+            return self.n_active_channels
         elif name=='optimal':
-                optimal_ts, alpha_difference = optimal_time_scale(self.event_times, xmax=self.n_channels)
+                optimal_ts, alpha_difference = optimal_time_scale(self.event_times, xmax=self.n_active_channels)
                 self.optimal = (self.time_scale==optimal_ts)
                 return self.optimal
         elif name=='mean_iei':
@@ -271,7 +274,7 @@ class Analysis(object):
                     self.sigma_events[i] = (second_bin-first_bin) / (first_bin-avalanche_start)
             return self.sigma_events
         elif name=='sigma_events_expected':
-            self.sigma_events_expected = 1 - (1 -(self.n_events/(self.n_channels*self.n_time_points)))**(self.n_channels*self.time_scale)
+            self.sigma_events_expected = 1 - (1 -(self.n_events/(self.n_active_channels*self.n_time_points)))**(self.n_active_channels*self.time_scale)
             return self.sigma_events_expected
         elif name=='sigma_displacements':
             from numpy import zeros
@@ -457,7 +460,7 @@ class Analysis(object):
 
     def calculate_time_scale(self):
         if self.time_scale == 'optimal':
-            self.time_scale, alpha_difference = optimal_time_scale(self.event_times, xmax=self.n_channels)
+            self.time_scale, alpha_difference = optimal_time_scale(self.event_times, xmax=self.n_active_channels)
         elif self.time_scale=='mean_iei':
             self.time_scale = round(self.interevent_intervals.mean())
             if self.time_scale == 0:
@@ -550,20 +553,18 @@ class Analysis(object):
                 return
             session.close()
             session.bind.dispose()
-        self.calculate_time_scale()
         if write_channels:
             print("Writing filtered channels")
             from numpy import asarray
             tic = clock()
             fc = asarray(list(session.query(db.Filtered_Channel)\
                     .filter_by(filter_id=filter_id)\
-                    .order_by(db.Filtered_Channel.channel)\
+                    .order_by(db.Filtered_Channel.id)\
                     .values(db.Filtered_Channel.id)))
-            if len(fc)==self.signal.shape[0]:
-                filtered_channel_ids = fc.flatten()
+            if fc.any():
+                filtered_channel_ids = fc.flatten()[:self.n_channels]
             else:
-                #filtered_channel_ids = zeros(self.signal.shape[0])
-                for i in range(self.signal.shape[0]):
+                for i in range(self.n_channels):
                     fc = db.Filtered_Channel(filter_id=filter_id)
                     fc.channel = i
                     fc.mean = self.signal[i].mean()
@@ -573,17 +574,17 @@ class Analysis(object):
                 session.execute("LOCK TABLES Filtered_Channel WRITE")
                 fc = asarray(list(session.query(db.Filtered_Channel)\
                         .filter_by(filter_id=filter_id)\
-                        .order_by(db.Filtered_Channel.channel)\
+                        .order_by(db.Filtered_Channel.id)\
                         .values(db.Filtered_Channel.id)))
-                if len(fc)==self.signal.shape[0]:
-                    filtered_channel_ids = fc.flatten()
+                if fc.any():
+                    filtered_channel_ids = fc.flatten()[:self.n_channels]
                 else:
                     session.commit()
                     fc = asarray(list(session.query(db.Filtered_Channel)\
                             .filter_by(filter_id=filter_id)\
-                            .order_by(db.Filtered_Channel.channel)\
+                            .order_by(db.Filtered_Channel.id)\
                             .values(db.Filtered_Channel.id)))
-                    filtered_channel_ids = fc.flatten()
+                    filtered_channel_ids = fc.flatten()[:self.n_channels]
                 session.execute("UNLOCK TABLES")
             print clock()-tic
             session.close()
@@ -599,14 +600,14 @@ class Analysis(object):
                     .filter_by(signal=self.event_signal)\
                     .filter_by(mode=self.threshold_mode)\
                     .filter_by(level=self.threshold_level)\
-                    .order_by(db.Threshold.channel)\
+                    .order_by(db.Threshold.id)\
                     .values(db.Threshold.id,\
                         db.Threshold.up,\
                         db.Threshold.down)))
-            if t.shape[0]==self.signal.shape[0]:
-                threshold_ids = t[:,0]
-                self.thresholds_up = t[:,1]
-                self.thresholds_down = t[:,2]
+            if t.any():
+                threshold_ids = t[:self.n_channels,0]
+                self.thresholds_up = t[:self.n_channels,1]
+                self.thresholds_down = t[:self.n_channels,2]
             else:
 #If we didn't find all the thresholds previously calculated, calculate them now.
                 self.thresholds_up
@@ -634,15 +635,14 @@ class Analysis(object):
                         .filter_by(signal=self.event_signal)\
                         .filter_by(mode=self.threshold_mode)\
                         .filter_by(level=self.threshold_level)\
-                        .order_by(db.Threshold.channel)\
+                        .order_by(db.Threshold.id)\
                         .values(db.Threshold.id,\
                             db.Threshold.up,\
                             db.Threshold.down)))
-                print len(t)
-                if len(t)==self.signal.shape[0]:
-                    threshold_ids = t[:,0]
-                    self.thresholds_up = t[:,1]
-                    self.thresholds_down = t[:,2]
+                if t.any():
+                    threshold_ids = t[:self.n_channels,0]
+                    self.thresholds_up = t[:self.n_channels,1]
+                    self.thresholds_down = t[:self.n_channels,2]
                 else:
                     session.commit()
                     t = asarray(list(session.query(db.Filter)\
@@ -652,9 +652,9 @@ class Analysis(object):
                             .filter_by(signal=self.event_signal)\
                             .filter_by(mode=self.threshold_mode)\
                             .filter_by(level=self.threshold_level)\
-                            .order_by(db.Threshold.channel)\
+                            .order_by(db.Threshold.id)\
                             .values(db.Threshold.id)))
-                    threshold_ids = asarray(list(t))
+                    threshold_ids = t[:self.n_channels]
                 session.execute("UNLOCK TABLES")
             session.close()
             session.bind.dispose()
@@ -747,9 +747,9 @@ class Analysis(object):
                     self.event_ids = asarray(list(written_events)).astype('int')
                 else:
                     self.event_ids = written_events[:].astype('int')
-                print clock()-tic
                 session.close()
                 session.bind.dispose()
+            print clock()-tic
         if write_analysis:
             print("Writing avalanche analysis")
             tic = clock()
@@ -769,6 +769,7 @@ class Analysis(object):
                 analysis.event_detection = self.event_detection
                 analysis.cascade_method = self.cascade_method
                 analysis.n_channels = self.n_channels
+                analysis.n_active_channels = self.n_active_channels
                 analysis.n_avalanches = self.n_avalanches
                 analysis.interevent_intervals_mean = self.interevent_intervals.mean()
                 analysis.interevent_intervals_median = median(self.interevent_intervals)
@@ -788,6 +789,8 @@ class Analysis(object):
                 print clock()-tic
                 session.add(analysis)
                 session.commit()
+            #This is precalculating things that may not have been calculated previously, which are needed for the Fits section.
+            self.time_scale = analysis.time_scale
             analysis.avalanches
             analysis.fits = []
             analysis_id = analysis.id
@@ -796,6 +799,7 @@ class Analysis(object):
             analysis_fit_association_id = analysis.fit_association_id
             session.close()
             session.bind.dispose()
+            print clock()-tic
         if write_avalanches:
             print("Writing avalanches")
             if not overwrite and  analysis.avalanches:
@@ -803,16 +807,25 @@ class Analysis(object):
             else:
                 tic = clock()
                 self.calculate_time_scale()
-                session2 = Session()
+                written_events = asarray(list(session.query(db.Event)
+                    .select_from(db.Filter)\
+                    .join(db.Filter.filtered_channels)\
+                    .join(db.Filtered_Channel.thresholds)\
+                    .join(db.Threshold.events)\
+                    .filter(db.Event.detection==self.event_detection)\
+                    .filter(db.Event.direction==self.threshold_direction)\
+                    .filter(db.Threshold.level==self.threshold_level)\
+                    .filter(db.Filter.id==filter_id)\
+                    .order_by(db.Event.time)\
+                    .all()))
+                session.close()
+                session.bind.dispose()
                 for i in range(self.n_avalanches):
                     a = db.Avalanche(analysis_id=analysis_id)
                     a.start = self.starts[i]
                     a.stop = self.stops[i]
-                    a.events = session.query(db.Event)\
-                        .filter(db.Event.time>=a.start)\
-                        .filter(db.Event.time<a.stop).all()
-                    session.close()
-                    session.bind.dispose()
+                    event_indices_in_this_avalanche = where((a.start<=self.event_times)*(self.event_times<a.stop))[0]
+                    a.events = written_events[event_indices_in_this_avalanche].tolist()
                     a.duration = self.durations[i]
                     if i==0:
                         a.interval = 0
@@ -832,11 +845,11 @@ class Analysis(object):
                             setattr(a,value, None)
                         elif getattr(a,value)==-float('inf'):
                             setattr(a,value, None)
-                    session2.add(a)
+                    session.add(a)
                 print clock()-tic
-                session2.commit()
-                session2.close()
-                session2.bind.dispose()
+                session.commit()
+                session.close()
+                session.bind.dispose()
                 print clock()-tic
         if write_fits:
             print("Writing fits")
@@ -864,7 +877,7 @@ class Analysis(object):
                 fit = getattr(self, i+'_fit')
 
                 if i=='size_events':
-                    #Here we try out multiple fit parameters for size_events. First (size_events_counter==0), the default fit of (1, n_channels, True).
+                    #Here we try out multiple fit parameters for size_events. First (size_events_counter==0), the default fit of (1, n_active_channels, True).
                     #Then from 1 without an xmax, then without a predefined xmin.
                     if size_events_counter==1:
                         self.size_events_fit = (1, None, True)

@@ -505,7 +505,7 @@ class Analysis(object):
             overwrite=False):
         from avalanchetoolbox import database as db
         from numpy import median
-        from time import clock
+        from time import clock, sleep
         from sqlalchemy.exc import IntegrityError
         if write_avalanches and not write_analysis:
             print("Need to write avalanche analysis in order to write individual avalanches, as we need the id of the analysis in the database.")
@@ -563,7 +563,7 @@ class Analysis(object):
                     .filter_by(filter_id=filter_id)\
                     .order_by(db.Filtered_Channel.id)\
                     .values(db.Filtered_Channel.id)))
-            if fc.any():
+            if len(fc)==self.n_channels:
                 filtered_channel_ids = fc.flatten()[:self.n_channels]
             else:
                 for i in range(self.n_channels):
@@ -580,10 +580,19 @@ class Analysis(object):
                     #the data we want from the database now anyway.
                     session.rollback()
                     pass
-                fc = asarray(list(session.query(db.Filtered_Channel)\
-                        .filter_by(filter_id=filter_id)\
-                        .order_by(db.Filtered_Channel.id)\
-                        .values(db.Filtered_Channel.id)))
+                waiting_for_other_job_to_finish_writing_the_data_we_want = True
+                
+                while waiting_for_other_job_to_finish_writing_the_data_we_want:
+                    fc = asarray(list(session.query(db.Filtered_Channel)\
+                            .filter_by(filter_id=filter_id)\
+                            .order_by(db.Filtered_Channel.id)\
+                            .values(db.Filtered_Channel.id)))
+                    session.close()
+                    if len(fc)==self.n_channels:
+                        waiting_for_other_job_to_finish_writing_the_data_we_want = False
+                    else:
+                        sleep(5)
+
                 filtered_channel_ids = fc.flatten()[:self.n_channels]
 
             print clock()-tic
@@ -613,6 +622,8 @@ class Analysis(object):
                 self.thresholds_up
                 self.thresholds_down
                 for i in range(len(self.thresholds_up)):
+                    print i
+                    print len(filtered_channel_ids)
                     t = db.Threshold(filtered_channel_id=filtered_channel_ids[i])
                     t.signal = self.event_signal
                     t.mode = self.threshold_mode
@@ -634,15 +645,24 @@ class Analysis(object):
                     #the data we want from the database now anyway.
                     session.rollback()
                     pass
-                t = asarray(list(session.query(db.Filter)\
-                        .join(db.Filter.filtered_channels)\
-                        .join(db.Filtered_Channel.thresholds)\
-                        .filter(db.Filter.id==filter_id)\
-                        .filter_by(signal=self.event_signal)\
-                        .filter_by(mode=self.threshold_mode)\
-                        .filter_by(level=self.threshold_level)\
-                        .order_by(db.Threshold.id)\
-                        .values(db.Threshold.id)))
+
+                waiting_for_other_job_to_finish_writing_the_data_we_want = True
+                
+                while waiting_for_other_job_to_finish_writing_the_data_we_want:
+                    t = asarray(list(session.query(db.Filter)\
+                            .join(db.Filter.filtered_channels)\
+                            .join(db.Filtered_Channel.thresholds)\
+                            .filter(db.Filter.id==filter_id)\
+                            .filter_by(signal=self.event_signal)\
+                            .filter_by(mode=self.threshold_mode)\
+                            .filter_by(level=self.threshold_level)\
+                            .order_by(db.Threshold.id)\
+                            .values(db.Threshold.id)))
+                    session.close()
+                    if len(t)==self.n_channels:
+                        waiting_for_other_job_to_finish_writing_the_data_we_want = False
+                    else:
+                        sleep(5)
                 threshold_ids = t[:self.n_channels]
             session.close()
             session.bind.dispose()
@@ -719,17 +739,25 @@ class Analysis(object):
                     #the data we want from the database now anyway.
                     session.rollback()
                     pass
-                written_events = session.query(db.Filter)\
-                    .join(db.Filter.filtered_channels)\
-                    .join(db.Filtered_Channel.thresholds)\
-                    .join(db.Threshold.events)\
-                    .filter(db.Event.detection==self.event_detection)\
-                    .filter(db.Event.direction==self.threshold_direction)\
-                    .filter(db.Threshold.mode==self.threshold_mode)\
-                    .filter(db.Threshold.level==self.threshold_level)\
-                    .filter(db.Filter.id==filter_id)\
-                    .values(db.Event.id)
-                self.event_ids = asarray(list(written_events)).astype('int')
+                waiting_for_other_job_to_finish_writing_the_data_we_want = True
+                
+                while waiting_for_other_job_to_finish_writing_the_data_we_want:
+                    written_events = session.query(db.Filter)\
+                        .join(db.Filter.filtered_channels)\
+                        .join(db.Filtered_Channel.thresholds)\
+                        .join(db.Threshold.events)\
+                        .filter(db.Event.detection==self.event_detection)\
+                        .filter(db.Event.direction==self.threshold_direction)\
+                        .filter(db.Threshold.mode==self.threshold_mode)\
+                        .filter(db.Threshold.level==self.threshold_level)\
+                        .filter(db.Filter.id==filter_id)\
+                        .values(db.Event.id)
+                    self.event_ids = asarray(list(written_events)).astype('int')
+                    session.close()
+                    if len(self.event_ids)==self.n_events:
+                        waiting_for_other_job_to_finish_writing_the_data_we_want = False
+                    else:
+                        sleep(5)
                 session.close()
                 session.bind.dispose()
             print clock()-tic
@@ -785,7 +813,7 @@ class Analysis(object):
             print clock()-tic
         if write_avalanches:
             print("Writing avalanches")
-            if not overwrite and  analysis.avalanches:
+            if not overwrite and analysis.avalanches:
                 print("Avalanches already written")
             else:
                 tic = clock()
@@ -808,8 +836,9 @@ class Analysis(object):
                     a = db.Avalanche(analysis_id=analysis_id)
                     a.start = self.starts[i]
                     a.stop = self.stops[i]
+                    print i
+                    print len(written_events)
                     event_indices_in_this_avalanche = where((a.start<=self.event_times)*(self.event_times<a.stop))[0]
-                    import pdb; pdb.set_trace()
                     a.events = written_events[event_indices_in_this_avalanche].tolist()
                     a.duration = self.durations[i]
                     if i==0:
@@ -833,6 +862,31 @@ class Analysis(object):
                     session.add(a)
                 print clock()-tic
                 session.commit()
+#                written_avalanches = session.query(db.Avalanche)\
+#                    .filter(db.Avalanche.analysis_id==analysis_id)\
+#                    .order_by(db.Avalanche.id)\
+#                    .values(db.Avalanche.id)
+#                avalanche_ids = asarray(list(written_avalanches)).astype('int')
+#                written_events = session.query(db.Event)\
+#                    .select_from(db.Filter)\
+#                    .join(db.Filter.filtered_channels)\
+#                    .join(db.Filtered_Channel.thresholds)\
+#                    .join(db.Threshold.events)\
+#                    .filter(db.Event.detection==self.event_detection)\
+#                    .filter(db.Event.direction==self.threshold_direction)\
+#                    .filter(db.Threshold.mode==self.threshold_mode)\
+#                    .filter(db.Threshold.level==self.threshold_level)\
+#                    .filter(db.Filter.id==filter_id)\
+#                    .order_by(db.Event.time)\
+#                    .values(db.Event.id)
+#                event_ids = asarray(list(written_events)).astype('int')
+#                for i in range(len(avalanche_ids)):
+#                    start = self.starts[i]
+#                    stop = self.stops[i]
+#                    event_indices_in_this_avalanche = where((start<=self.event_times)*(self.event_times<stop))[0]
+#                    for e in event_indices_in_this_avalanche:
+#                        session.add(db.Avalanche_Event_Association(avalanche_id=avalanche_ids[i], event_id = event_ids[e]))
+#                session.commit()
                 session.close()
                 session.bind.dispose()
                 print clock()-tic

@@ -4,6 +4,7 @@ from sqlalchemy import Column, Float, Integer, String, Boolean, ForeignKey, Tabl
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.ext.associationproxy import association_proxy
+from sqlalchemy.schema import UniqueConstraint
 
 class Base(object):
     """Base class which provides automated table name
@@ -123,6 +124,10 @@ class Filtered_Channel(Base):
     filter_id = Column(Integer, ForeignKey('Filter.id'))
     filter = relationship(Filter, cascade="all, delete-orphan", backref=backref('filtered_channels'), single_parent=True)
 
+    __table_args__ = (
+        UniqueConstraint('filter_id', 'channel'),
+        )
+
 class Threshold(Base):
     signal = Column(String(50))
     mode = Column(String(50))
@@ -140,6 +145,10 @@ class Threshold(Base):
     filtered_channel_id = Column(Integer, ForeignKey('Filtered_Channel.id'))
     filter_channel = relationship(Filtered_Channel, cascade="all, delete-orphan", backref=backref('thresholds'), single_parent=True)
 
+    __table_args__ = (
+        UniqueConstraint('filtered_channel_id', 'mode', 'level'), 
+        )
+
 class Event(Base):
     time = Column(Integer)
     interval = Column(Integer)
@@ -155,6 +164,10 @@ class Event(Base):
 
     threshold_id = Column(Integer, ForeignKey('Threshold.id'))
     filter = relationship(Threshold, cascade="all, delete-orphan", backref=backref('events'), single_parent=True)
+
+    __table_args__ = (
+        UniqueConstraint('threshold_id', 'time', 'detection', 'direction'),
+        )
 
 class Fit_Association(Base):
     """Associates a collection of Fit objects

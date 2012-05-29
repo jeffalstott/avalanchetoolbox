@@ -504,20 +504,22 @@ class Analysis(object):
             write_analysis=True, write_fits=True, write_event_fits=False,\
             overwrite=False):
         from avalanchetoolbox import database as db
-        from numpy import zeros, median
+        from numpy import median
         from time import clock
+        from sqlalchemy.exc import IntegrityError
         if write_avalanches and not write_analysis:
             print("Need to write avalanche analysis in order to write individual avalanches, as we need the id of the analysis in the database.")
             return
 
         print self.filename
         print self.HDF5_group
-        parameters = str(self.event_signal)+'_'+str(self.threshold_mode)+'_'+str(self.threshold_level)+'_'+str(self.threshold_direction)+'_'+str(self.event_detection)+\
+        parameters = str(self.event_signal)+'_'+str(self.threshold_mode)+'_'+str(self.threshold_level)+'_'+str(self.threshold_direction)+\
                 '_'+str(self.event_detection)+'_'+str(self.cascade_method)+'_'+str(self.time_scale)+'_'+str(self.spatial_sample_name)+'_'+str(self.temporal_sample_name)
         print parameters
         from sqlalchemy import create_engine
         from sqlalchemy.orm import sessionmaker
-        engine = create_engine(database_url, echo=False,  pool_recycle=3600)
+        from sqlalchemy.pool import NullPool
+        engine = create_engine(database_url, echo=False, poolclass=NullPool)
         Session = sessionmaker(bind=engine)
         session = Session()
         if not overwrite:
@@ -570,22 +572,20 @@ class Analysis(object):
                     fc.mean = self.signal[i].mean()
                     fc.SD = self.signal[i].std()
                     session.add(fc)
-                #It's possible the channels will be written by another job while we're calculting. So check again before comitting
-                session.execute("LOCK TABLES Filtered_Channel WRITE")
+                try:
+                    session.commit()
+                except IntegrityError:
+                    #This means another job wrote the values while this one was calculating, and now that we try
+                    #to commit the unique constraints are preventing us from doing so. That's ok; we'll just pull
+                    #the data we want from the database now anyway.
+                    session.rollback()
+                    pass
                 fc = asarray(list(session.query(db.Filtered_Channel)\
                         .filter_by(filter_id=filter_id)\
                         .order_by(db.Filtered_Channel.id)\
                         .values(db.Filtered_Channel.id)))
-                if fc.any():
-                    filtered_channel_ids = fc.flatten()[:self.n_channels]
-                else:
-                    session.commit()
-                    fc = asarray(list(session.query(db.Filtered_Channel)\
-                            .filter_by(filter_id=filter_id)\
-                            .order_by(db.Filtered_Channel.id)\
-                            .values(db.Filtered_Channel.id)))
-                    filtered_channel_ids = fc.flatten()[:self.n_channels]
-                session.execute("UNLOCK TABLES")
+                filtered_channel_ids = fc.flatten()[:self.n_channels]
+
             print clock()-tic
             session.close()
             session.bind.dispose()
@@ -626,8 +626,14 @@ class Analysis(object):
                         elif getattr(t,value)==-float('inf'):
                             setattr(t,value, None)
                     session.add(t)
-                #Check that thresholds weren't written by another job while this job was calculating
-                session.execute("LOCK TABLES Threshold WRITE, Filter READ, Filtered_Channel READ")
+                try:
+                    session.commit()
+                except IntegrityError:
+                    #This means another job wrote the values while this one was calculating, and now that we try
+                    #to commit the unique constraints are preventing us from doing so. That's ok; we'll just pull
+                    #the data we want from the database now anyway.
+                    session.rollback()
+                    pass
                 t = asarray(list(session.query(db.Filter)\
                         .join(db.Filter.filtered_channels)\
                         .join(db.Filtered_Channel.thresholds)\
@@ -636,26 +642,8 @@ class Analysis(object):
                         .filter_by(mode=self.threshold_mode)\
                         .filter_by(level=self.threshold_level)\
                         .order_by(db.Threshold.id)\
-                        .values(db.Threshold.id,\
-                            db.Threshold.up,\
-                            db.Threshold.down)))
-                if t.any():
-                    threshold_ids = t[:self.n_channels,0]
-                    self.thresholds_up = t[:self.n_channels,1]
-                    self.thresholds_down = t[:self.n_channels,2]
-                else:
-                    session.commit()
-                    t = asarray(list(session.query(db.Filter)\
-                            .join(db.Filter.filtered_channels)\
-                            .join(db.Filtered_Channel.thresholds)\
-                            .filter(db.Filter.id==filter_id)\
-                            .filter_by(signal=self.event_signal)\
-                            .filter_by(mode=self.threshold_mode)\
-                            .filter_by(level=self.threshold_level)\
-                            .order_by(db.Threshold.id)\
-                            .values(db.Threshold.id)))
-                    threshold_ids = t[:self.n_channels]
-                session.execute("UNLOCK TABLES")
+                        .values(db.Threshold.id)))
+                threshold_ids = t[:self.n_channels]
             session.close()
             session.bind.dispose()
             print clock()-tic
@@ -669,6 +657,7 @@ class Analysis(object):
                 .join(db.Threshold.events)\
                 .filter(db.Event.detection==self.event_detection)\
                 .filter(db.Event.direction==self.threshold_direction)\
+                .filter(db.Threshold.mode==self.threshold_mode)\
                 .filter(db.Threshold.level==self.threshold_level)\
                 .filter(db.Filter.id==filter_id)\
                 .order_by(db.Event.time)\
@@ -722,31 +711,25 @@ class Analysis(object):
                         elif getattr(e,value)==-float('inf'):
                             setattr(e,value, None)
                     session.add(e)
-                #All the event calculation will take awhile, and its possible another job will write the events to the database while we're churning. So check again before we write.
+                try:
+                    session.commit()
+                except IntegrityError:
+                    #This means another job wrote the values while this one was calculating, and now that we try
+                    #to commit the unique constraints are preventing us from doing so. That's ok; we'll just pull
+                    #the data we want from the database now anyway.
+                    session.rollback()
+                    pass
                 written_events = session.query(db.Filter)\
                     .join(db.Filter.filtered_channels)\
                     .join(db.Filtered_Channel.thresholds)\
                     .join(db.Threshold.events)\
                     .filter(db.Event.detection==self.event_detection)\
                     .filter(db.Event.direction==self.threshold_direction)\
+                    .filter(db.Threshold.mode==self.threshold_mode)\
                     .filter(db.Threshold.level==self.threshold_level)\
                     .filter(db.Filter.id==filter_id)\
                     .values(db.Event.id)
-                written_events = asarray(list(written_events))
-                if written_events.shape[0]==0:
-                    session.commit()
-                    written_events = session.query(db.Filter)\
-                        .join(db.Filter.filtered_channels)\
-                        .join(db.Filtered_Channel.thresholds)\
-                        .join(db.Threshold.events)\
-                        .filter(db.Event.detection==self.event_detection)\
-                        .filter(db.Event.direction==self.threshold_direction)\
-                        .filter(db.Threshold.level==self.threshold_level)\
-                        .filter(db.Filter.id==filter_id)\
-                        .values(db.Event.id)
-                    self.event_ids = asarray(list(written_events)).astype('int')
-                else:
-                    self.event_ids = written_events[:].astype('int')
+                self.event_ids = asarray(list(written_events)).astype('int')
                 session.close()
                 session.bind.dispose()
             print clock()-tic
@@ -814,6 +797,7 @@ class Analysis(object):
                     .join(db.Threshold.events)\
                     .filter(db.Event.detection==self.event_detection)\
                     .filter(db.Event.direction==self.threshold_direction)\
+                    .filter(db.Threshold.mode==self.threshold_mode)\
                     .filter(db.Threshold.level==self.threshold_level)\
                     .filter(db.Filter.id==filter_id)\
                     .order_by(db.Event.time)\
@@ -825,6 +809,7 @@ class Analysis(object):
                     a.start = self.starts[i]
                     a.stop = self.stops[i]
                     event_indices_in_this_avalanche = where((a.start<=self.event_times)*(self.event_times<a.stop))[0]
+                    import pdb; pdb.set_trace()
                     a.events = written_events[event_indices_in_this_avalanche].tolist()
                     a.duration = self.durations[i]
                     if i==0:
@@ -964,7 +949,8 @@ class Analyses(object):
         if not overwrite:
             from sqlalchemy import create_engine
             from sqlalchemy.orm import sessionmaker
-            engine = create_engine(self.database_url, echo=False)
+            from sqlalchemy.pool import NullPool
+            engine = create_engine(self.database_url, echo=False, poolclass=NullPool)
             Session = sessionmaker(bind=engine)
             session = Session()
             from avalanchetoolbox import database as db
@@ -1709,7 +1695,8 @@ def avalanche_statistics(metrics, \
     if not session and database_url:
         from sqlalchemy import create_engine
         from sqlalchemy.orm.session import Session
-        engine = create_engine(database_url, echo=False)
+        from sqlalchemy.pool import NullPool
+        engine = create_engine(database_url, echo=False, poolclass=NullPool)
         session = Session(engine)
         close_session_at_end=True
 
@@ -1912,7 +1899,8 @@ def run_analyses(data,\
     if not session and database_url:
         from sqlalchemy import create_engine
         from sqlalchemy.orm.session import Session
-        engine = create_engine(database_url, echo=False)
+        from sqlalchemy.pool import NullPool
+        engine = create_engine(database_url, echo=False, poolclass=NullPool)
         session = Session(engine)
     if session:
         from avalanchetoolbox import database as db
@@ -2042,7 +2030,8 @@ def run_analyses(data,\
             analysis_file.writelines(['from avalanches import avalanche_analysis, avalanche_statistics\n',
                 'from sqlalchemy import create_engine\n',
                 'from sqlalchemy.orm.session import Session\n',
-                'engine = create_engine(database_url, echo=False)\n\n'])
+                'from sqlalchemy.pool import NullPool\n',
+                'engine = create_engine(database_url, echo=False, poolclass=NullPoll)\n\n'])
 
             analysis_file.write('analysis_id=%s \n\n' % analysis_id)
             analysis_file.write("""print("analysis_id=%r, threshold_mode=%r, threshold_level=%r, threshold_direction=%r, event_signal=%r, event_detection=%r, time_scale=%s, cascade_method=%r, spatial_sample=%r, spatial_sample_name=%r, temporal_sample=%r, temporal_sample_name=%r") \n\n"""\

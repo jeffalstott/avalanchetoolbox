@@ -513,6 +513,7 @@ class Analysis(object):
 
         print self.filename
         print self.HDF5_group
+        print filter_id
         parameters = str(self.event_signal)+'_'+str(self.threshold_mode)+'_'+str(self.threshold_level)+'_'+str(self.threshold_direction)+\
                 '_'+str(self.event_detection)+'_'+str(self.cascade_method)+'_'+str(self.time_scale)+'_'+str(self.spatial_sample_name)+'_'+str(self.temporal_sample_name)
         print parameters
@@ -563,6 +564,7 @@ class Analysis(object):
                     .filter_by(filter_id=filter_id)\
                     .order_by(db.Filtered_Channel.id)\
                     .values(db.Filtered_Channel.id)))
+            session.close()
             if len(fc)==self.n_channels:
                 filtered_channel_ids = fc.flatten()[:self.n_channels]
             else:
@@ -575,6 +577,7 @@ class Analysis(object):
                 try:
                     session.commit()
                 except IntegrityError:
+                    print("Reading")
                     #This means another job wrote the values while this one was calculating, and now that we try
                     #to commit the unique constraints are preventing us from doing so. That's ok; we'll just pull
                     #the data we want from the database now anyway.
@@ -591,6 +594,7 @@ class Analysis(object):
                     if len(fc)==self.n_channels:
                         waiting_for_other_job_to_finish_writing_the_data_we_want = False
                     else:
+                        print("Found %i written and need %i. Waiting for another job to finish writing"%(len(fc), self.n_channels))
                         sleep(5)
 
                 filtered_channel_ids = fc.flatten()[:self.n_channels]
@@ -613,6 +617,8 @@ class Analysis(object):
                     .values(db.Threshold.id,\
                         db.Threshold.up,\
                         db.Threshold.down)))
+            session.close()
+            session.bind.dispose()
             if t.any():
                 threshold_ids = t[:self.n_channels,0]
                 self.thresholds_up = t[:self.n_channels,1]
@@ -622,8 +628,6 @@ class Analysis(object):
                 self.thresholds_up
                 self.thresholds_down
                 for i in range(len(self.thresholds_up)):
-                    print i
-                    print len(filtered_channel_ids)
                     t = db.Threshold(filtered_channel_id=filtered_channel_ids[i])
                     t.signal = self.event_signal
                     t.mode = self.threshold_mode
@@ -640,6 +644,7 @@ class Analysis(object):
                 try:
                     session.commit()
                 except IntegrityError:
+                    print("Reading")
                     #This means another job wrote the values while this one was calculating, and now that we try
                     #to commit the unique constraints are preventing us from doing so. That's ok; we'll just pull
                     #the data we want from the database now anyway.
@@ -659,16 +664,18 @@ class Analysis(object):
                             .order_by(db.Threshold.id)\
                             .values(db.Threshold.id)))
                     session.close()
+                    session.bind.dispose()
                     if len(t)==self.n_channels:
                         waiting_for_other_job_to_finish_writing_the_data_we_want = False
                     else:
+                        print("Found %i written and need %i. Waiting for another job to finish writing"%(len(t), self.n_channels))
                         sleep(5)
-                threshold_ids = t[:self.n_channels]
+                threshold_ids = t[:self.n_channels].flatten()
             session.close()
             session.bind.dispose()
             print clock()-tic
         if write_events:
-            print("Writing events")
+            print("Events")
             tic = clock()
 
             written_events = session.query(db.Filter)\
@@ -689,18 +696,20 @@ class Analysis(object):
                     db.Event.time,\
                     db.Threshold.channel,\
                     db.Event.interval)
+            session.close()
+            session.bind.dispose()
 
             from numpy import asarray
             written_events = asarray(list(written_events))
-            session.close()
-            session.bind.dispose()
             #We calculate only the locations of the events locally (through self.n_events), and check if the count is the same as 
             #in the database. If so, we can get out of calculating the displacements, amplitudes, and areas under the curve, which
             #is the largest time sink of the event-related calculations
 
             #Strike the above comment. We now assume rasters are written completely or not at all, thanks to the locking of the database.
             #So if the length isn't 0, we assume it's a complete raster
+            print written_events
             if written_events.shape[0]!=0:
+                print("Reading")
                 self.event_ids = written_events[:,0].astype('int')
                 self.event_displacements = written_events[:,1]
                 self.event_amplitudes = written_events[:,2]
@@ -728,12 +737,16 @@ class Analysis(object):
                     for value in vars(e).keys():
                         if getattr(e,value)==float('inf'):
                             setattr(e,value, None)
+                            print value
                         elif getattr(e,value)==-float('inf'):
                             setattr(e,value, None)
+                            print value
                     session.add(e)
                 try:
                     session.commit()
+                    print("Writing")
                 except IntegrityError:
+                    print("Reading")
                     #This means another job wrote the values while this one was calculating, and now that we try
                     #to commit the unique constraints are preventing us from doing so. That's ok; we'll just pull
                     #the data we want from the database now anyway.
@@ -757,6 +770,7 @@ class Analysis(object):
                     if len(self.event_ids)==self.n_events:
                         waiting_for_other_job_to_finish_writing_the_data_we_want = False
                     else:
+                        print("Found %i written and need %i. Waiting for another job to finish writing"%(len(self.event_ids), self.n_events))
                         sleep(5)
                 session.close()
                 session.bind.dispose()
@@ -836,8 +850,6 @@ class Analysis(object):
                     a = db.Avalanche(analysis_id=analysis_id)
                     a.start = self.starts[i]
                     a.stop = self.stops[i]
-                    print i
-                    print len(written_events)
                     event_indices_in_this_avalanche = where((a.start<=self.event_times)*(self.event_times<a.stop))[0]
                     a.events = written_events[event_indices_in_this_avalanche].tolist()
                     a.duration = self.durations[i]
